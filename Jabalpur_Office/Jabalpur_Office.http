@@ -1,0 +1,6 @@
+@Jabalpur_Office_HostAddress = http://localhost:5057
+
+GET {{Jabalpur_Office_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
