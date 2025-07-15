@@ -59,30 +59,54 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// Use CORS
-app.UseCors("AllowAll"); //Kiran
 
 
-//Use Swagger (only in development)
-//Swagger (in development or production)
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
+
+////Use Swagger (only in development)
+////Swagger (in development or production)
+//// Configure the HTTP request pipeline.
+//if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
+//{
+//    app.UseSwagger();
+//    app.UseSwaggerUI();
+//}
+
+//// ✅ Redirect / to /swagger
+//app.Use(async (context, next) =>
+//{
+//    if (context.Request.Path == "/")
+//    {
+//        context.Response.Redirect("/swagger");
+//        return;
+//    }
+//    await next();
+//}); 
+
+
+// ✅ Set base path for virtual directory (IIS: /Jabalapur)
+app.UsePathBase("/Jabalpur");
+
+// ✅ Configure Swagger with correct base path
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    c.SwaggerEndpoint("/Jabalpur/swagger/v1/swagger.json", "Jabalpur API v1");
+    c.RoutePrefix = "swagger"; // Makes Swagger UI available at /Jabalapur/swagger
+});
 
-// ✅ Redirect / to /swagger
+// ✅ Redirect /Jabalapur → /Jabalapur/swagger
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path == "/")
+    if (context.Request.Path == "/" || context.Request.Path == "/Jabalpur")
     {
-        context.Response.Redirect("/swagger");
+        context.Response.Redirect("/Jabalpur/swagger");
         return;
     }
     await next();
 });
 
+// Use CORS
+app.UseCors("AllowAll"); //Kiran
 //Middleware order matters
 app.UseHttpsRedirection();
 
