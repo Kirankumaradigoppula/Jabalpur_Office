@@ -64,12 +64,24 @@ app.UseCors("AllowAll"); //Kiran
 
 
 //Use Swagger (only in development)
+//Swagger (in development or production)
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// ✅ Redirect / to /swagger
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/")
+    {
+        context.Response.Redirect("/swagger");
+        return;
+    }
+    await next();
+});
 
 //Middleware order matters
 app.UseHttpsRedirection();
