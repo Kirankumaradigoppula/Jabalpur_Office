@@ -83,8 +83,90 @@ var app = builder.Build();
 //}); 
 
 
+
+
+
 // ✅ Set base path for virtual directory (IIS: /Jabalapur)
 app.UsePathBase("/Jabalpur");
+
+// ✅ Redirect /Jabalapur → /Jabalapur/swagger -Its No Password Protection
+//app.Use(async (context, next) =>
+//{
+//    if (context.Request.Path == "/" || context.Request.Path == "/Jabalpur")
+//    {
+//        context.Response.Redirect("/Jabalpur/swagger");
+//        return;
+//    }
+//    await next();
+//});
+
+// ✅ Multiple-user Basic Auth for Swagger
+var swaggerUsers = new Dictionary<string, string>
+{
+    
+    { "dhruval", "8980818059" },
+    { "shravan", "9737544479" },
+    { "kiran", "8099824067" }
+};
+
+// Track last access time by IP (you can replace with cookie/session for real apps)
+var lastAccessByIP = new Dictionary<string, DateTime>();
+var swaggerTimeoutMinutes = 10;
+
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/swagger"))
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        // Check auth header
+        string authHeader = context.Request.Headers["Authorization"];
+        if (authHeader != null && authHeader.StartsWith("Basic "))
+        {
+            var encoded = authHeader.Substring("Basic ".Length).Trim();
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+            var parts = decoded.Split(':');
+            if (parts.Length == 2)
+            {
+                var username = parts[0];
+                var password = parts[1];
+                
+                if (swaggerUsers.TryGetValue(username, out var expectedPassword) && expectedPassword == password)
+                {
+                    //Start Its For Time Limit
+                    if (!lastAccessByIP.TryGetValue(ip, out var lastAccess) || DateTime.UtcNow - lastAccess > TimeSpan.FromMinutes(swaggerTimeoutMinutes))
+                    {
+                        // Expired, force re-authentication
+                        lastAccessByIP[ip] = DateTime.UtcNow;
+                        context.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Swagger UI\"";
+                        context.Response.StatusCode = 401;
+                        await context.Response.WriteAsync("Session expired. Re-login required.");
+                        return;
+                    }
+
+                    // Update last access time and allow
+                    lastAccessByIP[ip] = DateTime.UtcNow;
+
+                    // ✅ Disable caching (prevents browser reusing auth)
+                    context.Response.Headers["Cache-Control"] = "no-store";
+                    context.Response.Headers["Pragma"] = "no-cache";
+                    context.Response.Headers["Expires"] = "0";
+
+                    //End Its For Time Limit
+
+                    await next();
+                    return;
+                }
+            }
+        }
+        // Unauthenticated
+        context.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Swagger UI\"";
+        context.Response.StatusCode = 401;
+        await context.Response.WriteAsync("Unauthorized Swagger access.");
+        return;
+    }
+
+    await next();
+});
 
 // ✅ Configure Swagger with correct base path
 app.UseSwagger();
@@ -94,16 +176,7 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = "swagger"; // Makes Swagger UI available at /Jabalapur/swagger
 });
 
-// ✅ Redirect /Jabalapur → /Jabalapur/swagger
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path == "/" || context.Request.Path == "/Jabalpur")
-    {
-        context.Response.Redirect("/Jabalpur/swagger");
-        return;
-    }
-    await next();
-});
+
 
 // Use CORS
 app.UseCors("AllowAll"); //Kiran
