@@ -101,71 +101,137 @@ namespace Jabalpur_Office.Controllers
         }
 
         protected async Task<IActionResult> ExecuteWithHandlingAsync<TResult>(
-    Func<Task<TResult>> func,
-    string logContext,
-    bool skipTokenCheck = false)
-    where TResult : Product, new()
+         Func<Task<TResult>> func,
+         string logContext,
+         bool skipTokenCheck = false)
+         where TResult : Product, new()
         {
             var baseOutObj = new TResult
             {
-                LoginStatus = pJWT_LOGIN_NAME // From BaseApiController or token claims
+                LoginStatus = pJWT_LOGIN_NAME
             };
 
             try
             {
-                // If not anonymous and token invalid → block
                 bool isAnonymous = skipTokenCheck || IsCallerAnonymous();
                 if (!isAnonymous && !CheckToken(out var loginResponse))
-                {
-                    return Unauthorized(loginResponse); // 401
-                }
+                    return Unauthorized(loginResponse);
 
                 var result = await func();
-                return Ok(result); // 200
+                return Ok(result);
             }
             catch (SqlException ex)
             {
                 LogError(ex, logContext + "_SQL");
                 baseOutObj.StatusCode = 503;
                 baseOutObj.Message = "Network failure: " + GetSafeErrorMessage(ex);
-                return StatusCode(503, baseOutObj); // 503
+                return StatusCode(503, baseOutObj);
             }
             catch (TimeoutException ex)
             {
                 LogError(ex, logContext + "_TIMEOUT");
                 baseOutObj.StatusCode = 504;
                 baseOutObj.Message = "Request timed out. Please try again later.";
-                return StatusCode(504, baseOutObj); // 504
+                return StatusCode(504, baseOutObj);
             }
             catch (TaskCanceledException ex)
             {
                 LogError(ex, logContext + "_TASK_CANCEL");
                 baseOutObj.StatusCode = 408;
                 baseOutObj.Message = "Request was cancelled or timed out.";
-                return StatusCode(408, baseOutObj); // 408
+                return StatusCode(408, baseOutObj);
             }
             catch (InvalidOperationException ex)
             {
                 LogError(ex, logContext + "_INVALID_OP");
                 baseOutObj.StatusCode = 409;
                 baseOutObj.Message = "Invalid operation: " + GetSafeErrorMessage(ex);
-                return Conflict(baseOutObj); // 409
+                return Conflict(baseOutObj);
             }
             catch (UnauthorizedAccessException ex)
             {
                 LogError(ex, logContext + "_UNAUTHORIZED");
                 baseOutObj.StatusCode = 401;
                 baseOutObj.Message = "Access denied: " + GetSafeErrorMessage(ex);
-                return Unauthorized(baseOutObj); // 401
+                return Unauthorized(baseOutObj);
             }
             catch (Exception ex)
             {
                 LogError(ex, logContext + "_GENERAL");
                 baseOutObj.StatusCode = 500;
                 baseOutObj.Message = "An unexpected server error occurred: " + GetSafeErrorMessage(ex);
-                return StatusCode(500, baseOutObj); // 500
+                return StatusCode(500, baseOutObj);
             }
         }
+        protected async Task<IActionResult> ExecuteWithHandlingAsync(
+          Func<Task<IActionResult>> func,
+          string logContext,
+          bool skipTokenCheck = false)
+        {
+            try
+            {
+                bool isAnonymous = skipTokenCheck || IsCallerAnonymous();
+                if (!isAnonymous && !CheckToken(out var loginResponse))
+                    return Unauthorized(loginResponse);
+
+                return await func();
+            }
+            catch (SqlException ex)
+            {
+                LogError(ex, logContext + "_SQL");
+                return StatusCode(503, new
+                {
+                    Status = "FAIL",
+                    Message = "Network failure: " + GetSafeErrorMessage(ex)
+                });
+            }
+            catch (TimeoutException ex)
+            {
+                LogError(ex, logContext + "_TIMEOUT");
+                return StatusCode(504, new
+                {
+                    Status = "FAIL",
+                    Message = "Request timed out."
+                });
+            }
+            catch (TaskCanceledException ex)
+            {
+                LogError(ex, logContext + "_TASK_CANCEL");
+                return StatusCode(408, new
+                {
+                    Status = "FAIL",
+                    Message = "Request was cancelled or timed out."
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                LogError(ex, logContext + "_INVALID_OP");
+                return Conflict(new
+                {
+                    Status = "FAIL",
+                    Message = "Invalid operation: " + GetSafeErrorMessage(ex)
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                LogError(ex, logContext + "_UNAUTHORIZED");
+                return Unauthorized(new
+                {
+                    Status = "FAIL",
+                    Message = "Access denied: " + GetSafeErrorMessage(ex)
+                });
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, logContext + "_GENERAL");
+                return StatusCode(500, new
+                {
+                    Status = "FAIL",
+                    Message = "Unexpected error: " + GetSafeErrorMessage(ex)
+                });
+            }
+        }
+
 
         private bool IsCallerAnonymous()
         {
