@@ -100,6 +100,73 @@ namespace Jabalpur_Office.Controllers
             return baseOutObj as TResult;
         }
 
+        protected async Task<IActionResult> ExecuteWithHandlingAsync<TResult>(
+    Func<Task<TResult>> func,
+    string logContext,
+    bool skipTokenCheck = false)
+    where TResult : Product, new()
+        {
+            var baseOutObj = new TResult
+            {
+                LoginStatus = pJWT_LOGIN_NAME // From BaseApiController or token claims
+            };
+
+            try
+            {
+                // If not anonymous and token invalid → block
+                bool isAnonymous = skipTokenCheck || IsCallerAnonymous();
+                if (!isAnonymous && !CheckToken(out var loginResponse))
+                {
+                    return Unauthorized(loginResponse); // 401
+                }
+
+                var result = await func();
+                return Ok(result); // 200
+            }
+            catch (SqlException ex)
+            {
+                LogError(ex, logContext + "_SQL");
+                baseOutObj.StatusCode = 503;
+                baseOutObj.Message = "Network failure: " + GetSafeErrorMessage(ex);
+                return StatusCode(503, baseOutObj); // 503
+            }
+            catch (TimeoutException ex)
+            {
+                LogError(ex, logContext + "_TIMEOUT");
+                baseOutObj.StatusCode = 504;
+                baseOutObj.Message = "Request timed out. Please try again later.";
+                return StatusCode(504, baseOutObj); // 504
+            }
+            catch (TaskCanceledException ex)
+            {
+                LogError(ex, logContext + "_TASK_CANCEL");
+                baseOutObj.StatusCode = 408;
+                baseOutObj.Message = "Request was cancelled or timed out.";
+                return StatusCode(408, baseOutObj); // 408
+            }
+            catch (InvalidOperationException ex)
+            {
+                LogError(ex, logContext + "_INVALID_OP");
+                baseOutObj.StatusCode = 409;
+                baseOutObj.Message = "Invalid operation: " + GetSafeErrorMessage(ex);
+                return Conflict(baseOutObj); // 409
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                LogError(ex, logContext + "_UNAUTHORIZED");
+                baseOutObj.StatusCode = 401;
+                baseOutObj.Message = "Access denied: " + GetSafeErrorMessage(ex);
+                return Unauthorized(baseOutObj); // 401
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, logContext + "_GENERAL");
+                baseOutObj.StatusCode = 500;
+                baseOutObj.Message = "An unexpected server error occurred: " + GetSafeErrorMessage(ex);
+                return StatusCode(500, baseOutObj); // 500
+            }
+        }
+
         private bool IsCallerAnonymous()
         {
             try
