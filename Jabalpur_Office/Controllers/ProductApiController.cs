@@ -72,11 +72,11 @@ namespace Jabalpur_Office.Controllers
         [AllowAnonymous]
         [HttpPost]
         [Route("validateUser")] //2.
-        public IActionResult validateUser([FromBody]  object input)
+        public IActionResult validateUser([FromBody] ValidateUserRequest input)
         {
             return Ok(ExecuteWithHandling(() =>
             {
-                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input);
 
                 // Safe Dictionary<string, object>
                 var data = ApiHelper.ToObjectDictionary(rawData);
@@ -118,19 +118,20 @@ namespace Jabalpur_Office.Controllers
 
         [HttpPost]
         [Route("GetOTP")] //3.
-        public async Task<IActionResult> GetOTP([FromBody] object input)
+        public async Task<IActionResult> GetOTP([FromBody] OtpRequest input)
         {
             return await ExecuteWithHandlingAsync(async () =>
             {
                 var (outObj, data) = PrepareWrapperAndData<WrapperObjectData>(input);
 
                 // Get parameters
-                var values = ApiHelper.GetValuesOrDbNull(data, pJWT_MP_SEAT_ID, "MOBNO", "ROLE");
+                var values = ApiHelper.ToObjectDictionary(data); 
                 string pROLE = values.ContainsKey("ROLE") ? values["ROLE"]?.ToString() ?? "" : "";
                 string pMOBNO = values.ContainsKey("MOBNO") ? values["MOBNO"]?.ToString() ?? "" : "";
 
                 // Get OTP_SMS_STATUS from DB
                 string pQry = "SELECT DISTINCT OTP_SMS_STATUS FROM MP_SEATS WHERE MP_SEAT_ID = @MP_SEAT_ID";
+
                 string smsOtpStatus = Convert.ToString(
                     await _core.ExecScalarAsync(
                         pQry,
@@ -149,20 +150,40 @@ namespace Jabalpur_Office.Controllers
                         if (!string.IsNullOrEmpty(generatedOtp) && !string.IsNullOrEmpty(pMOBNO))
                         {
                             string sendResult = await SendOTPAsync(pMOBNO, pJWT_LOGIN_NAME, generatedOtp, "SEND", pROLE, pJWT_MP_SEAT_ID);
-
-                            List<SqlParameter> paramlist = new()
+                            try
                             {
-                                new SqlParameter("@pLoginAs", pROLE),
-                                new SqlParameter("@pMobileNo", pMOBNO),
-                                new SqlParameter("@pLoginOTP", generatedOtp),
-                                new SqlParameter("@pMpSeatId", pJWT_MP_SEAT_ID)
-                            };
-                            await _core.ExecQryAsync("UpdateOTP", paramlist.ToArray());
+                                var pMessage = new SqlParameter("@pMessage", SqlDbType.VarChar, 500)
+                                {
+                                    Direction = ParameterDirection.Output
+                                };
+                                var pStatusCode = new SqlParameter("@pStatusCode", SqlDbType.Int)
+                                {
+                                    Direction = ParameterDirection.Output
+                                };
 
-                            resultData["OTP"] = generatedOtp;
-                            resultData["Status"] = "SUCCESS";
-                            resultData["Message"] = "OTP generated and sent successfully.";
-                            resultData["StatusCode"] = "200";
+                                List<SqlParameter> paramList = new()
+                                 {
+                                     new SqlParameter("@pROLE", pROLE),
+                                     new SqlParameter("@pMOBNO", pMOBNO),
+                                     new SqlParameter("@pLoginOTP", generatedOtp),
+                                     new SqlParameter("@pMP_SEAT_ID", pJWT_MP_SEAT_ID),
+                                     pMessage,
+                                     pStatusCode
+                                 };
+                                await _core.ExecQryAsync("ReactUpdateOTP", paramList.ToArray());
+
+                                resultData["OTP"] = generatedOtp;
+                                resultData["Status"] = pStatusCode.Value?.ToString() == "200" ? "SUCCESS" : "FAILED";
+                                resultData["Message"] = pMessage.Value?.ToString() ?? "OTP processed.";
+                                resultData["StatusCode"] = pStatusCode.Value?.ToString() ?? "200";
+                            }
+                            catch (Exception Ex)
+                            {
+                                resultData["Status"] = "FAILED";
+                                resultData["Message"] = $"Error saving OTP: {Ex.Message}";
+                                resultData["StatusCode"] = "500";
+                            }
+                           
                         }
                         else
                         {
