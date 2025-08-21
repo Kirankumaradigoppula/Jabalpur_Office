@@ -13,7 +13,8 @@ namespace Jabalpur_Office.Models
 
     public class ValidateUserRequest
     {
-      
+        [Required(ErrorMessage = "MP Seat is required.")]
+        public string MP_SEAT_ID { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Username is required.")]
         public string USERNAME { get; set; } = string.Empty;
