@@ -62,43 +62,11 @@ var app = builder.Build();
 
 
 
-////Use Swagger (only in development)
-////Swagger (in development or production)
-//// Configure the HTTP request pipeline.
-//if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
-//{
-//    app.UseSwagger();
-//    app.UseSwaggerUI();
-//}
-
-//// ✅ Redirect / to /swagger
-//app.Use(async (context, next) =>
-//{
-//    if (context.Request.Path == "/")
-//    {
-//        context.Response.Redirect("/swagger");
-//        return;
-//    }
-//    await next();
-//}); 
-
-
-
-
 
 // ✅ Set base path for virtual directory (IIS: /Jabalapur)
 app.UsePathBase("/Jabalpur");
 
-// ✅ Redirect /Jabalapur → /Jabalapur/swagger -Its No Password Protection
-//app.Use(async (context, next) =>
-//{
-//    if (context.Request.Path == "/" || context.Request.Path == "/Jabalpur")
-//    {
-//        context.Response.Redirect("/Jabalpur/swagger");
-//        return;
-//    }
-//    await next();
-//});
+
 
 // ✅ Multiple-user Basic Auth for Swagger
 var swaggerUsers = new Dictionary<string, string>
@@ -185,8 +153,51 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication(); //Without it, the app won’t decode JWT tokens for incoming requests.
 
+app.UseMiddleware<JwtMiddleware>(); //22082025
+
 app.UseAuthorization();
 
 app.MapControllers();
 
 app.Run();
+
+public class JwtMiddleware
+{
+    private readonly RequestDelegate _next;
+
+    public JwtMiddleware(RequestDelegate next)
+    {
+        _next = next;
+    }
+
+    public async Task Invoke(HttpContext context)
+    {
+        // If request already failed authorization, handle response
+        if (context.Response.StatusCode == StatusCodes.Status401Unauthorized)
+        {
+            await HandleUnauthorizedResponse(context);
+            return;
+        }
+
+        await _next(context);
+
+        // After executing next middleware, check if token expired
+        if (context.Response.StatusCode == StatusCodes.Status401Unauthorized)
+        {
+            await HandleUnauthorizedResponse(context);
+        }
+    }
+
+    private static async Task HandleUnauthorizedResponse(HttpContext context)
+    {
+        context.Response.ContentType = "application/json";
+        var response = new
+        {
+            statusCode = 401,
+            message = "Unauthorized or token expired",
+            loginStatus = ""
+        };
+
+        await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(response));
+    }
+}
