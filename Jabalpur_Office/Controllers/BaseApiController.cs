@@ -1,14 +1,21 @@
 ﻿using System.Data;
 using System.Text.Json;
 using Jabalpur_Office.Data;
+using Jabalpur_Office.Filters;
 using Jabalpur_Office.Helpers;
 using Jabalpur_Office.Models;
 using Jabalpur_Office.ServiceCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using static Jabalpur_Office.Helpers.ApiHelper;
+using static Jabalpur_Office.Filters.JwtTokenHelper;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Jabalpur_Office.Controllers
 {
+    [Authorize] // 🔹 Applies globally to all controllers inheriting from this
+    [ApiController]
     public class BaseApiController : ControllerBase
     {
         protected string pJWT_LOGIN_NAME =>
@@ -19,6 +26,39 @@ namespace Jabalpur_Office.Controllers
 
         protected string pJWT_USERID =>
             User?.Identity?.IsAuthenticated == true ? GetClaimValue("USERID") : string.Empty;
+       
+       // private readonly IsssCore __core;
+       // private AppDbContext __context;
+       //
+       // public BaseApiController(AppDbContext context_1, IsssCore core_1)
+       // {
+       //     __context = context_1;
+       //     __core = core_1;
+       // }
+
+        //public BaseApiController(IsssCore core)
+        //{
+        //    __core = core;
+        //}
+
+        //public BaseApiController(AppDbContext context)
+        //{
+        //    this.context = context;
+        //}
+
+        private readonly AppDbContext _context;
+        private readonly IsssCore __core;
+
+        private readonly JwtTokenHelper _jwtTokenHelper;
+
+        public BaseApiController(AppDbContext context, IsssCore core_, JwtTokenHelper jwtToken) 
+        {
+            _context = context;
+            __core = core_;
+            _jwtTokenHelper = jwtToken;
+        }
+
+
 
         protected string GetClaimValue(string key)
         {
@@ -232,6 +272,9 @@ namespace Jabalpur_Office.Controllers
             }
         }
 
+        //Crud Operation
+
+        
 
         private bool IsCallerAnonymous()
         {
@@ -267,19 +310,7 @@ namespace Jabalpur_Office.Controllers
             return message.Length > 300 ? message.Substring(0, 300) + "..." : message;
         }
 
-        private readonly IsssCore _core;
-        private AppDbContext context;
-
-        public BaseApiController(IsssCore core)
-        {
-            _core = core;
-        }
-
-        public BaseApiController(AppDbContext context)
-        {
-            this.context = context;
-        }
-
+        
         protected List<Dictionary<string, string>> ToDictionaryList(DataTable dt)
         {
             return ApiHelper.ConvertToDictionaryList(dt);
@@ -289,6 +320,9 @@ namespace Jabalpur_Office.Controllers
         {
             ApiHelper.SetOutputParams(status, message, response);
         }
+
+
+      
 
         protected (TWrapper wrapper, Dictionary<string, string> data) PrepareWrapperAndData<TWrapper>(object input)
     where TWrapper : Product, new()
@@ -304,6 +338,28 @@ namespace Jabalpur_Office.Controllers
             return (wrapper, data);
         }
 
+        //For Crud Operations
+        protected (TWrapper wrapper, Dictionary<string, object> parameters)
+           PrepareCrudRequest<TWrapper>(object input, string loginName)
+           where TWrapper : WrapperCrudObjectData, new()
+        {
+            // 1. Initialize wrapper
+            var wrapper = new TWrapper
+            {
+                LoginStatus = loginName
+            };
+
+            // 2. Convert input object → Dictionary<string, object>
+            var parameters = input != null
+                ? input.GetType().GetProperties()
+                      .ToDictionary(
+                          prop => prop.Name,
+                          prop => prop.GetValue(input, null) ?? DBNull.Value)
+                : new Dictionary<string, object>();
+
+            return (wrapper, parameters);
+        }
+
         private Dictionary<string, string> ConvertToDictionary(object input)
         {
             if (input == null)
@@ -317,26 +373,64 @@ namespace Jabalpur_Office.Controllers
             }) ?? new Dictionary<string, string>();
         }
 
-        protected void LogError(Exception ex, string location)
+        protected void LogError12(Exception ex, string location)
         {
             try
             {
+                string fullError = ex.ToString();
                 List<SqlParameter> logParams = new List<SqlParameter>
                 {
-                    new SqlParameter("@pMP_SEAT_ID", pJWT_MP_SEAT_ID ?? ""),
-                    new SqlParameter("@pAPI_NAME", location),
-                    new SqlParameter("@pERRORMESSAGE", ex.Message),
-                    new SqlParameter("@pSTACKTRACE", ex.StackTrace ?? ""),
-                    new SqlParameter("@pEUSER", pJWT_USERID ?? "")
+                    new SqlParameter("@pMP_SEAT_ID", (object?)pJWT_MP_SEAT_ID ?? DBNull.Value),
+                    new SqlParameter("@pAPI_NAME", location ?? "Unknown"),
+                    new SqlParameter("@pERRORMESSAGE", ex.Message ?? "No message"),
+                    new SqlParameter("@pSTACKTRACE", fullError ?? ""),
+                    new SqlParameter("@pEUSER", (object?)pJWT_USERID ?? DBNull.Value)
                 };
 
-                _core.ExecProcDt("InsertApiErrorLog", logParams.ToArray()); // Assuming this SP exists
+                __core.ExecProcDt("InsertApiErrorLog", logParams.ToArray()); // Assuming this SP exists
             }
             catch (Exception loggingEx)
             {
                 Console.WriteLine($"Logging failed: {loggingEx.Message}");
             }
         }
+
+        protected void LogError(Exception ex, string location)
+        {
+            try
+            {
+                if (ex == null) ex = new Exception("Unknown exception (null)");
+
+                string fullError = ex.ToString();
+
+                var logParams = new List<SqlParameter>
+        {
+            new SqlParameter("@pMP_SEAT_ID", string.IsNullOrEmpty(pJWT_MP_SEAT_ID?.ToString())
+                                              ? (object)DBNull.Value
+                                              : pJWT_MP_SEAT_ID),
+            new SqlParameter("@pAPI_NAME", string.IsNullOrEmpty(location) ? "Unknown" : location),
+            new SqlParameter("@pERRORMESSAGE", string.IsNullOrEmpty(ex.Message) ? "No message" : ex.Message),
+            new SqlParameter("@pSTACKTRACE", fullError ?? ""),
+            new SqlParameter("@pEUSER", string.IsNullOrEmpty(pJWT_USERID?.ToString())
+                                        ? (object)DBNull.Value
+                                        : pJWT_USERID)
+        };
+
+                if (__core != null) // ✅ avoid null reference on _core
+                {
+                    __core.ExecProcDt("InsertApiErrorLog", logParams.ToArray());
+                }
+                else
+                {
+                    Console.WriteLine("⚠️ _core is NULL, cannot log to DB.");
+                }
+            }
+            catch (Exception loggingEx)
+            {
+                Console.WriteLine($"Logging failed: {loggingEx}");
+            }
+        }
+
 
 
 
