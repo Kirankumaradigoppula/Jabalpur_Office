@@ -12,14 +12,15 @@ using static Jabalpur_Office.Filters.JwtTokenHelper;
 using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 using Microsoft.Data.SqlClient;
 using System.Text;
+using System.Net.NetworkInformation;
 
 namespace Jabalpur_Office.Controllers
 {
-    [Authorize]
+    //[Authorize]
     [EnableCors("AllowAll")] // ✅ Use named policy defined in Program.cs
     [Route("api/ProductApiController")]
 
-    [ApiController]
+    //[ApiController]
     public class ProductApiController : BaseApiController
     {
         private readonly AppDbContext _context;
@@ -27,11 +28,11 @@ namespace Jabalpur_Office.Controllers
 
         private readonly JwtTokenHelper _jwtTokenHelper;
 
-        public ProductApiController(AppDbContext context, IsssCore core, JwtTokenHelper jwtToken) : base(context)
+        public ProductApiController(AppDbContext context, IsssCore core, JwtTokenHelper jwtToken) : base(context, core, jwtToken)
         {
             _context = context;
             _core = core;
-            _jwtTokenHelper= jwtToken;
+            _jwtTokenHelper = jwtToken;
         }
 
         //1.
@@ -103,7 +104,7 @@ namespace Jabalpur_Office.Controllers
                     var mpSeatId = Convert.ToString(dt.Rows[0]["MP_SEAT_ID"]);
                     // JWT token (optional)
                     string jwtToken = _jwtTokenHelper.GenerateToken(userId, userName, mpSeatId);
-                    
+
                     foreach (var item in outObj.DataList)
                     {
                         item["LOGIN_JWT_TOKEN"] = jwtToken;
@@ -125,7 +126,7 @@ namespace Jabalpur_Office.Controllers
                 var (outObj, data) = PrepareWrapperAndData<WrapperObjectData>(input);
 
                 // Get parameters
-                var values = ApiHelper.ToObjectDictionary(data); 
+                var values = ApiHelper.ToObjectDictionary(data);
                 string pROLE = values.ContainsKey("ROLE") ? values["ROLE"]?.ToString() ?? "" : "";
                 string pMOBNO = values.ContainsKey("MOBNO") ? values["MOBNO"]?.ToString() ?? "" : "";
 
@@ -183,7 +184,7 @@ namespace Jabalpur_Office.Controllers
                                 resultData["Message"] = $"Error saving OTP: {Ex.Message}";
                                 resultData["StatusCode"] = "500";
                             }
-                           
+
                         }
                         else
                         {
@@ -303,9 +304,9 @@ namespace Jabalpur_Office.Controllers
                 // Step 3: Execute stored procedure
                 DataTable dt = _core.ExecProcDt("ReactVerifyOTP", paramList.ToArray());
 
-               // // Step 4: Map result to output wrapper
-               // ApiHelper.SetSingleRowOutput(dt, outObj);
-               // SetOutput(pStatus, pMsg, outObj);
+                // // Step 4: Map result to output wrapper
+                // ApiHelper.SetSingleRowOutput(dt, outObj);
+                // SetOutput(pStatus, pMsg, outObj);
 
                 var resultObject = new Dictionary<string, object>();
 
@@ -337,6 +338,147 @@ namespace Jabalpur_Office.Controllers
                 return outObj;
 
             }, nameof(VerifyOTP), out _, skipTokenCheck: false));
+        }
+
+        //6.
+
+        [HttpPost]
+        [Route("GetConstructionWorkDetails")]
+        public IActionResult GetConstructionWorkDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactConstructionWorkDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetConstructionWorkDetails), out _, skipTokenCheck: false));
+
+
+        }
+
+        //7
+        [HttpPost]
+        [Route("GetConstructionFormFieldDetails")]
+        public IActionResult GetConstructionFormFieldDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: false,
+                    includeWhere: false
+
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactConstructionFormFieldData", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+
+
+                return outObj;
+
+            }, nameof(GetConstructionFormFieldDetails), out _, skipTokenCheck: false));
+
+
+        }
+
+        //8
+        [HttpPost]
+        [Route("GetConstructionStagesDetails")]
+        public IActionResult GetConstructionStagesDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: false
+
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactConstructionStageMasterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+
+            }, nameof(GetConstructionFormFieldDetails), out _, skipTokenCheck: false));
+
+
+        }
+
+        //9
+        [HttpPost]
+        [Route("CrudConstructionWorkDetails")]
+        public IActionResult ReactCrudConstructionWorkDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId:pJWT_USERID,
+                    includeRetId:false
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudConstructionWorkDetails", paramList.ToArray());
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+
+            }, nameof(GetConstructionFormFieldDetails), out _, skipTokenCheck: false));
+
+
         }
 
     }
