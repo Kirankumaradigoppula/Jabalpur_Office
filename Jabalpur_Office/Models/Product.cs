@@ -56,6 +56,22 @@
         public int RetID { get; set; }  // ← Add this line
     }
 
+    //public class WrapperCrudObjectData : CrudProduct
+    //{
+
+    //    // For returning additional data (any type, e.g. object, list, etc.)
+    //    public object? Data { get; set; }
+
+    //}
+
+    //public class CrudProduct
+    //{
+    //    public int StatusCode { get; set; } = 500;
+    //    public string Message { get; set; } = string.Empty;
+    //    public string LoginStatus { get; set; } = string.Empty;
+    //    public int RetID { get; set; } = 0;
+    //}
+
     /// <summary>
     /// Paging response metadata for UI and navigation.
     /// </summary>

@@ -42,7 +42,12 @@ namespace Jabalpur_Office.Helpers
                 : 500;
 
             response.Message = messageParam?.Value?.ToString() ?? "Unknown error";
+
         }
+
+
+        //
+
         public static SqlParameter OutputParam(string name, SqlDbType type, int size = 0)
         {
             var param = new SqlParameter(name, type)
