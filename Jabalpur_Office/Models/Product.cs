@@ -52,7 +52,6 @@
     /// </summary>
     public class WrapperCrudObjectData : Product
     {
-        //public object DataObject { get; set; }
         public int RetID { get; set; }  // ← Add this line
     }
 
@@ -115,5 +114,10 @@
         public int TotalPages { get; set; }
         public int StartPage { get; set; }
         public int EndPage { get; set; }
+    }
+
+    public class StorageSettings
+    {
+        public string BasePath { get; set; }
     }
 }
