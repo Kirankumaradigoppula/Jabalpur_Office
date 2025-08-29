@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using Jabalpur_Office.Models;
 using Microsoft.Data.SqlClient;
+using Newtonsoft.Json;
 
 namespace Jabalpur_Office.Helpers
 {
@@ -44,7 +45,26 @@ namespace Jabalpur_Office.Helpers
             response.Message = messageParam?.Value?.ToString() ?? "Unknown error";
 
         }
+        
 
+        public static void SetOutputParamsWithRetId(SqlParameter statusParam, SqlParameter messageParam, SqlParameter RetIDParam, Product response)
+        {
+            if (response == null) throw new ArgumentNullException(nameof(response));
+
+            response.StatusCode = statusParam?.Value != DBNull.Value && statusParam?.Value != null
+                ? Convert.ToInt32(statusParam.Value)
+                : 500;
+
+            response.Message = messageParam?.Value?.ToString() ?? "Unknown error";
+
+            // ✅ Only assign RetID if the response is CRUD type
+            if (response is WrapperCrudObjectData wrapper)
+            {
+                wrapper.RetID = RetIDParam?.Value != DBNull.Value && RetIDParam?.Value != null
+                    ? Convert.ToInt32(RetIDParam.Value)
+                    : 0;
+            }
+        }
 
         //
 
@@ -217,6 +237,24 @@ namespace Jabalpur_Office.Helpers
             }
 
             return result;
+        }
+
+        // Generic version
+        public static T ToObject<T>(object input)
+        {
+            if (input == null) return default(T);
+
+            if (input is string s)
+                return JsonConvert.DeserializeObject<T>(s);
+
+            return JsonConvert.DeserializeObject<T>(input.ToString());
+        }
+
+        // Non-generic version (always Dictionary<string, object>)
+        public static Dictionary<string, object> ToObject(object input)
+        {
+            if (input == null) return new Dictionary<string, object>();
+            return JsonConvert.DeserializeObject<Dictionary<string, object>>(input.ToString());
         }
 
 
