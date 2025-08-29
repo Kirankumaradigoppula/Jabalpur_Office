@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using static Jabalpur_Office.Helpers.ApiHelper;
 using static Jabalpur_Office.Filters.JwtTokenHelper;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 
 namespace Jabalpur_Office.Controllers
 {
@@ -27,35 +28,21 @@ namespace Jabalpur_Office.Controllers
         protected string pJWT_USERID =>
             User?.Identity?.IsAuthenticated == true ? GetClaimValue("USERID") : string.Empty;
        
-       // private readonly IsssCore __core;
-       // private AppDbContext __context;
-       //
-       // public BaseApiController(AppDbContext context_1, IsssCore core_1)
-       // {
-       //     __context = context_1;
-       //     __core = core_1;
-       // }
-
-        //public BaseApiController(IsssCore core)
-        //{
-        //    __core = core;
-        //}
-
-        //public BaseApiController(AppDbContext context)
-        //{
-        //    this.context = context;
-        //}
+       
 
         private readonly AppDbContext _context;
         private readonly IsssCore __core;
 
         private readonly JwtTokenHelper _jwtTokenHelper;
 
-        public BaseApiController(AppDbContext context, IsssCore core_, JwtTokenHelper jwtToken) 
+        private readonly StorageSettings _settings;
+
+        public BaseApiController(AppDbContext context, IsssCore core_, JwtTokenHelper jwtToken, IOptions<StorageSettings> settings) 
         {
             _context = context;
             __core = core_;
             _jwtTokenHelper = jwtToken;
+            _settings = settings.Value;
         }
 
 
@@ -321,7 +308,10 @@ namespace Jabalpur_Office.Controllers
             ApiHelper.SetOutputParams(status, message, response);
         }
 
-
+        protected void SetOutputWithRetId(SqlParameter status, SqlParameter message,SqlParameter RetID, Product response)
+        {
+            ApiHelper.SetOutputParamsWithRetId(status, message, RetID, response);
+        }
       
 
         protected (TWrapper wrapper, Dictionary<string, string> data) PrepareWrapperAndData<TWrapper>(object input)
