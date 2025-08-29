@@ -14,6 +14,8 @@ namespace Jabalpur_Office.ServiceCore
         DataSet ExecProcDs(string procName, SqlParameter[] parameters); // ✅ Optional: include if used
         Task<int> ExecQryAsync(string queryText, SqlParameter[] parameters);
 
+        int ExecNonQuery(string sql);
+
 
     }
 }
