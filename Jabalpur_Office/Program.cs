@@ -5,6 +5,7 @@ using Jabalpur_Office.ServiceCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Jabalpur_Office.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,8 @@ builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.Configure<StorageSettings>(
+    builder.Configuration.GetSection("StorageSettings"));
 
 // ✅ Add this: Register DbContext with connection string --Kiran
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -152,6 +155,8 @@ app.UseCors("AllowAll"); //Kiran
 app.UseHttpsRedirection();
 
 app.UseAuthentication(); //Without it, the app won’t decode JWT tokens for incoming requests.
+
+app.UseStaticFiles();  // enables wwwroot  // For Image Folder
 
 app.UseMiddleware<JwtMiddleware>(); //22082025
 
