@@ -16,6 +16,8 @@ namespace Jabalpur_Office.ServiceCore
 
         int ExecNonQuery(string sql);
 
+        object ExecScalarText(string procName, SqlParameter[] parameters);
+
 
     }
 }
