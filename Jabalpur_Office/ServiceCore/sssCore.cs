@@ -66,6 +66,8 @@ namespace Jabalpur_Office.ServiceCore
 
         }
 
+      
+
         public object ExecProcScalar(string procName, SqlParameter[] parameters)
         {
             try
@@ -157,6 +159,39 @@ namespace Jabalpur_Office.ServiceCore
             catch (Exception ex)
             {
                 throw new Exception($"Error executing query '{queryText}'", ex);
+            }
+        }
+
+        public int ExecNonQuery(string sql)
+        {
+            using (var conn = new SqlConnection(_connectionString))
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                conn.Open();
+                return cmd.ExecuteNonQuery();
+            }
+        }
+
+        public object ExecScalarText(string procName, SqlParameter[] parameters)
+        {
+            try
+            {
+                using var conn = new SqlConnection(_connectionString);
+                using var cmd = new SqlCommand(procName, conn)
+                {
+                    CommandType = CommandType.Text, // important!
+                    CommandTimeout = 120
+                };
+
+                if (parameters != null)
+                    cmd.Parameters.AddRange(parameters);
+
+                conn.Open();
+                return cmd.ExecuteScalar();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error executing procedure '{procName}'", ex);
             }
         }
 
