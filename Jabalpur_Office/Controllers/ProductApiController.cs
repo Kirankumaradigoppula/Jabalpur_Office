@@ -543,6 +543,7 @@ namespace Jabalpur_Office.Controllers
                         // Add FLAG to indicate existing record
                         // You can set the flag value depending on your logic, e.g., "EXISTS" or true/false
                         data["FLAG"] = "SAVE";
+                        data["TABLE_FLAG"] = "CONSTRUCTION_WORK";
                         // Convert updated dictionary back to JSON string for CrudConstructionImages
                         string updatedInput = JsonConvert.SerializeObject(data);
                         // Directly call the other method internally
@@ -573,7 +574,7 @@ namespace Jabalpur_Office.Controllers
 
                 );
 
-                var allowedKeys = new[] { "CW_CODE", "STAGES_MAS_ID","DOC_MAS_ID","FLAG" };
+                var allowedKeys = new[] { "CW_CODE", "STAGES_MAS_ID","DOC_MAS_ID","FLAG","TABLE_FLAG" };
 
                 var data = ApiHelper.ToObjectDictionary(rawData);
 
@@ -582,15 +583,19 @@ namespace Jabalpur_Office.Controllers
                             .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
 
-                var filterKeys = ApiHelper.GetFilteredKeys(selectedData);
 
+                var filterKeys = ApiHelper.GetFilteredKeys(selectedData);
                 string pFLAG = string.Empty;
+                string pTABLE_FLAG = string.Empty;
                 if (selectedData.ContainsKey("FLAG"))
                 {
                     pFLAG = selectedData["FLAG"]?.ToString();
                 }
-
-                if (files != null && files.Count > 0 && pFLAG=="SAVE")
+                if (selectedData.ContainsKey("TABLE_FLAG"))
+                {
+                    pTABLE_FLAG = selectedData["TABLE_FLAG"]?.ToString();
+                }
+                if (files != null && files.Count > 0 && pFLAG=="SAVE"  )
                 {
 
                     // ✅ Max 5 files
@@ -603,6 +608,8 @@ namespace Jabalpur_Office.Controllers
                     }
 
                     string[] allowedExt = new[] { ".jpg", ".jpeg", ".png", ".pdf" };
+
+                    
 
                     foreach (var file in files)
                     {
@@ -619,6 +626,20 @@ namespace Jabalpur_Office.Controllers
                                 outObj.LoginStatus = pJWT_LOGIN_NAME;
                                 return outObj;
                             }
+                            // ✅ Compute file hash
+                            string fileHash;
+                            using (var md5 = System.Security.Cryptography.MD5.Create())
+                            using (var stream = file.OpenReadStream())
+                            {
+                                var hash = md5.ComputeHash(stream);
+                                fileHash = BitConverter.ToString(hash).Replace("-", "").ToLower();
+                            }
+
+                            
+
+                            // ✅ Save fileHash for later DB update
+                            selectedData["FILE_HASH"] = fileHash;
+                            
                         }
                         // Step 2: Build SQL parameters (advanced dynamic approach)
                         var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
@@ -642,7 +663,16 @@ namespace Jabalpur_Office.Controllers
                                 string cwStagesValue = null;
                                 cwCodeValue = selectedData.ContainsKey("CW_CODE") ? selectedData["CW_CODE"]?.ToString() : "UNKNOWN";
                                 cwStagesValue = selectedData.ContainsKey("STAGES_MAS_ID") ? selectedData["STAGES_MAS_ID"]?.ToString() : "0";
-                                string baseFolder = $"image/MP_{pJWT_MP_SEAT_ID}/Construction/{cwCodeValue}";
+                                string baseFolder = string.Empty;
+
+                                if (pTABLE_FLAG == "CONSTRUCTION_WORK")
+                                {
+                                     baseFolder = $"image/MP_{pJWT_MP_SEAT_ID}/Construction/{cwCodeValue}";
+                                }
+                                if (pTABLE_FLAG == "CONSTRUCTION_INSPECTION")
+                                {
+                                     baseFolder = $"image/MP_{pJWT_MP_SEAT_ID}/Inspection/{cwCodeValue}";
+                                }
                                 string finalFolder = Path.Combine(storageRoot, baseFolder);
                                 if (!Directory.Exists(finalFolder))
                                 {
@@ -667,9 +697,17 @@ namespace Jabalpur_Office.Controllers
                                     file.CopyTo(stream); // sync version
                                 }
                                 // Relative path for DB (use forward slashes)
-                                string relativePath = $"image/MP_{pJWT_MP_SEAT_ID}/Construction/{cwCodeValue}/{FileName}";
 
+                                string relativePath = string.Empty;
 
+                                if (pTABLE_FLAG == "CONSTRUCTION_WORK")
+                                {
+                                     relativePath = $"image/MP_{pJWT_MP_SEAT_ID}/Construction/{cwCodeValue}/{FileName}";
+                                }
+                                if (pTABLE_FLAG == "CONSTRUCTION_INSPECTION")
+                                {
+                                    relativePath = $"image/MP_{pJWT_MP_SEAT_ID}/Inspection/{cwCodeValue}/{FileName}";
+                                }
 
                                 string vQryUpdateStatus = $"UPDATE CONSTRUCTION_DOCUMENT_MASTER SET FILE_NAME='"+FileName+"' ,FILE_PATH='"+ relativePath + "' WHERE MP_SEAT_ID='"+ pJWT_MP_SEAT_ID + "' AND DOC_MAS_ID='"+ outObj.RetID + "' ";
                                 _core.ExecNonQuery(vQryUpdateStatus);
@@ -682,60 +720,67 @@ namespace Jabalpur_Office.Controllers
                 }
                 if (pFLAG == "DELETE")
                 {
-                    try
-                    {
-                        // ✅ Step 1: Fetch the file details from DB using DOC_MAS_ID
-                        string fetchQry = $@"
-                           SELECT FILE_NAME, FILE_PATH,CW_CODE,  
-                           FROM CONSTRUCTION_DOCUMENT_MASTER 
-                           WHERE MP_SEAT_ID = '{pJWT_MP_SEAT_ID}' 
-                           AND DOC_MAS_ID = '{selectedData["DOC_MAS_ID"]}' 
-                           AND CW_CODE ='{selectedData["CW_CODE"]}'";
-                        DataTable dtFile = _core.ExecProcDt(fetchQry, null);
-                        if (dtFile.Rows.Count > 0)
+
+                        string pFILE_PATH = string.Empty;
+                        if (data.ContainsKey("FILE_PATH"))
                         {
-                            string fileName = dtFile.Rows[0]["FILE_NAME"]?.ToString();
-                            string filePath = dtFile.Rows[0]["FILE_PATH"]?.ToString();
-                            string cwCode = dtFile.Rows[0]["CW_CODE"]?.ToString();
+                            pFILE_PATH = data["FILE_PATH"]?.ToString();
+                        }
 
-                            // ✅ Step 2: Delete file from server if exists
-                            if (!string.IsNullOrEmpty(filePath) && System.IO.File.Exists(filePath))
+                        if (!string.IsNullOrEmpty(pFILE_PATH))
+                        {
+                            // Step 1: Build SQL parameters (advanced dynamic approach)
+                            var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                                data: selectedData,
+                                keys: filterKeys,
+                                mpSeatId: pJWT_MP_SEAT_ID,
+                                userId: pJWT_USERID,
+                                includeRetId: true
+                            );
+
+                            DataTable dt = _core.ExecProcDt("ReactCrudConstructionImages", paramList.ToArray());
+                            SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                            if (outObj.StatusCode == 200)
                             {
-                                System.IO.File.Delete(filePath);
-                            }
 
-                            // ✅ Step 3: Delete record from DB
-                            string deleteQry = $@"
-                              DELETE FROM CONSTRUCTION_DOCUMENT_MASTER
-                              WHERE MP_SEAT_ID = '{pJWT_MP_SEAT_ID}' 
-                              AND DOC_MAS_ID = '{selectedData["DOC_MAS_ID"]}'";
-                            _core.ExecProcNonQuery(deleteQry, null);
+                                   // Base folder
+                                   string baseFolderPath = _settings.BasePath;
 
-                            // ✅ Step 4: Check if folder is empty → remove it
-                            if (!string.IsNullOrEmpty(cwCode))
+                                    // Build full file path
+                                    string fullFilePath = Path.Combine(baseFolderPath, pFILE_PATH.Replace("/", "\\"));
+                            // ✅ Step 1: Delete file if exists
+                            if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
                             {
-                                string folderPath = Path.Combine(_settings.BasePath, $"image/MP_{pJWT_MP_SEAT_ID}/Construction/{cwCode}");
-
-                                if (Directory.Exists(folderPath) && !Directory.EnumerateFileSystemEntries(folderPath).Any())
+                                System.IO.File.Delete(fullFilePath);
+                                // ✅ Step 2: Check parent folder
+                                string parentFolder = Path.GetDirectoryName(fullFilePath);
+                                if (!string.IsNullOrWhiteSpace(parentFolder) &&
+                                         Directory.Exists(parentFolder) &&
+                                        !Directory.EnumerateFileSystemEntries(parentFolder).Any())
                                 {
-                                    Directory.Delete(folderPath, true); // true = recursive delete if empty
+                                    Directory.Delete(parentFolder, true); // delete folder if empty
                                 }
                             }
 
-                            outObj.StatusCode = 200;
-                            outObj.Message = "File deleted successfully.";
-                            outObj.LoginStatus = pJWT_LOGIN_NAME;
-                        }
 
-                    }
-                    catch (Exception Ex)
-                    {
-                        outObj.StatusCode = 500;
-                        outObj.LoginStatus = pJWT_LOGIN_NAME;
-                        outObj.Message = "Error while deleting file: " + Ex.Message;
-                    }
+                            //// ✅ Step 2: Delete file from server if exists
+                            //if (!string.IsNullOrEmpty(pFILE_PATH) && System.IO.File.Exists(pFILE_PATH))
+                            //    {
+                            //        System.IO.File.Delete(pFILE_PATH);
+                            //    }
+
+                            //   if (!string.IsNullOrEmpty(pFILE_PATH))
+                            //   {
+                            //       string folderPath = Path.Combine(_settings.BasePath, pFILE_PATH);
+                               
+                            //       if (Directory.Exists(folderPath) && !Directory.EnumerateFileSystemEntries(folderPath).Any())
+                            //       {
+                            //           Directory.Delete(folderPath, true); // true = recursive delete if empty
+                            //       }
+                            //   }
+                            }
+                        }
                 }
-                
                 return outObj;
 
             }, nameof(CrudConstructionImages), out _, skipTokenCheck: false));
@@ -875,7 +920,7 @@ namespace Jabalpur_Office.Controllers
         [Route("CrudConstructionInspectionDetails")]
         public IActionResult CrudConstructionInspectionDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
-            return Ok(ExecuteWithHandling(() =>
+            return Ok(ExecuteWithHandling( () =>
             {
                 var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
                    string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
@@ -898,19 +943,32 @@ namespace Jabalpur_Office.Controllers
                 SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
                 if (outObj.StatusCode == 200 && files != null && files.Count > 0)
                 {
-                    data["FLAG"] = "SAVE";
-                    data["MODULE_NM"] = "CONSTRUCTION_INSPECTION";
-                    data["REFERENCE_ID"] = outObj.RetID;
 
+                    data["TABLE_FLAG"] = "CONSTRUCTION_INSPECTION";
+                    // Get OTP_SMS_STATUS from DB
+                    string pQry = @"SELECT DISTINCT INSPECTION_ID FROM CONSTRUCTION_INSPECTION_DETAILS WHERE MP_SEAT_ID = @MP_SEAT_ID AND ID=@ID";
+
+                    string inspectionId = Convert.ToString(
+                       _core.ExecScalarText(
+                            pQry,
+                             new[] { 
+                                 new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID) ,
+                                 new SqlParameter("@ID", outObj.RetID)
+
+                             }
+                        )
+                     );
+                    data["CW_CODE"] = inspectionId;
+                    data["STAGES_MAS_ID"] = Convert.ToString(outObj.RetID);
                     // Convert updated dictionary back to JSON string for CrudConstructionImages
                     string updatedInput = JsonConvert.SerializeObject(data);
                     // Directly call the other method internally
-                    var imagesResult = CrudConstructionInspectionImages(updatedInput, files) as ObjectResult;
+                    var imagesResult = CrudConstructionImages(updatedInput, files) as ObjectResult;
 
-                    // Merge status/message if needed
+                    //// Merge status/message if needed
                     if (imagesResult?.Value is WrapperCrudObjectData imgOut)
                     {
-                        outObj.Message += " | " + imgOut.Message;
+                        outObj.Message += "  " + imgOut.Message;
                     }
                 }
                 return outObj;
@@ -920,88 +978,11 @@ namespace Jabalpur_Office.Controllers
 
         }
 
-        [HttpPost]
-        [Route("CrudConstructionInspectionImages")]
-        public IActionResult CrudConstructionInspectionImages([FromForm] string input, [FromForm] List<IFormFile> files)
-        {
-            return Ok(ExecuteWithHandling(() => {
-
-                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
-                 string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
-                );
-
-                var allowedKeys = new[] { "CW_CODE", "MODULE_NM", "REFERENCE_ID", "FLAG", "ID" };
-
-                var data = ApiHelper.ToObjectDictionary(rawData);
-
-                var selectedData = data
-                            .Where(kvp => allowedKeys.Contains(kvp.Key))
-                            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-
-
-                var filterKeys = ApiHelper.GetFilteredKeys(selectedData);
-
-                string pFLAG = string.Empty;
-                if (selectedData.ContainsKey("FLAG"))
-                {
-                    pFLAG = selectedData["FLAG"]?.ToString();
-                }
-                if (pFLAG == "SAVE")
-                {
-                    // ✅ Max 2 files
-                    if (files.Count > 2)
-                    {
-                        outObj.StatusCode = 500;
-                        outObj.Message = "You can upload a maximum of 2 files.";
-                        outObj.LoginStatus = pJWT_LOGIN_NAME;
-                        return outObj;
-                    }
-                    string[] allowedExt = new[] { ".jpg", ".jpeg", ".png", ".pdf" };
-                    foreach (var file in files)
-                    {
-                        string FileName = string.Empty;
-                        string FilePath = string.Empty;
-                        string ext = string.Empty;
-                        if (file.Length > 0)
-                        {
-                            ext = Path.GetExtension(file.FileName).ToLower();
-                            if (!allowedExt.Contains(ext))
-                            {
-                                outObj.StatusCode = 500;
-                                outObj.Message = "Only JPG, PNG, and PDF files are allowed.";
-                                outObj.LoginStatus = pJWT_LOGIN_NAME;
-                                return outObj;
-                            }
-                        }
-                        // Step 2: Build SQL parameters (advanced dynamic approach)
-                        var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
-                            data: selectedData,
-                            keys: filterKeys,
-                            mpSeatId: pJWT_MP_SEAT_ID,
-                            userId: pJWT_USERID,
-                            includeRetId: true
-                        );
-
-                        DataTable dt = _core.ExecProcDt("ReactCrudConstructionInspectionImages", paramList.ToArray());
-                        SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
-                        if (outObj.StatusCode == 200 )
-                        {
-                            if (pFLAG == "SAVE")
-                            {
-                                var storageRoot = _settings.BasePath;
-                            }
-                        }
-                    }
-                }
-
-
-                return outObj;
-            }, nameof(CrudConstructionInspectionImages), out _, skipTokenCheck: false));
-        }
+        
 
         [HttpPost]
         [Route("GetConstructionInspectionDetails")]
-        public IActionResult GetConstructionInspectionDetails([FromBody] object input)
+        public  IActionResult GetConstructionInspectionDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
             {
@@ -1037,6 +1018,47 @@ namespace Jabalpur_Office.Controllers
                 return outObj;
 
             }, nameof(GetConstructionInspectionDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost]
+        [Route("GetConstructionInspectionReportDetails")]
+        public IActionResult GetConstructionInspectionReportDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactConstructionInspectionReports", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetConstructionInspectionReportDetails), out _, skipTokenCheck: false));
 
         }
 
