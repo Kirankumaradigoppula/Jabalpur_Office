@@ -1063,5 +1063,39 @@ namespace Jabalpur_Office.Controllers
         }
 
 
+        [HttpPost]
+        [Route("CrudConstructionInspectionDelayedDetails")]
+        public IActionResult CrudConstructionInspectionDelayedDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                   string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+                 );
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, _) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: false
+                );
+
+              
+
+                DataTable dt = _core.ExecProcDt("ReactCrudConstructionInspectionDelayedDetails", paramList.ToArray());
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+
+            }, nameof(CrudConstructionInspectionDetails), out _, skipTokenCheck: false));
+
+        }
+
+
     }
 }
