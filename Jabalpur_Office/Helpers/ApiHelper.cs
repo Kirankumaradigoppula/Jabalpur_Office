@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using Jabalpur_Office.Models;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 using Newtonsoft.Json;
 
 namespace Jabalpur_Office.Helpers
@@ -660,6 +661,24 @@ namespace Jabalpur_Office.Helpers
 
                 if (string.IsNullOrEmpty(fieldName) || string.IsNullOrEmpty(fieldValue))
                     continue;
+                //Changed On 16092025 
+                //switch (fieldName)
+                //{
+                //    case "VIS_ENTRY_DATE":
+                //    case "CONT_ADDED_DATETIME":
+                //    case "LTR_SUBMITD_DATE":
+                //    case "ADDED_DATE":
+                //        searchWhere.AppendFormat(" AND CONVERT(VARCHAR, {0}, 105) LIKE '{1}%'", fieldName, EscapeSqlLike(fieldValue));
+                //        break;
+
+                //    case "VIS_MOBNO":
+                //        searchWhere.AppendFormat(" AND (VIS_MOBNO LIKE '{0}%' OR VIS_ALTR_MOBNO LIKE '{0}%')", EscapeSqlLike(fieldValue));
+                //        break;
+
+                //    default:
+                //        searchWhere.AppendFormat(" AND {0} LIKE N'%{1}%'", fieldName, EscapeSqlLike(fieldValue));
+                //        break;
+                //}
 
                 switch (fieldName)
                 {
@@ -669,14 +688,47 @@ namespace Jabalpur_Office.Helpers
                     case "ADDED_DATE":
                         searchWhere.AppendFormat(" AND CONVERT(VARCHAR, {0}, 105) LIKE '{1}%'", fieldName, EscapeSqlLike(fieldValue));
                         break;
-
                     case "VIS_MOBNO":
-                        searchWhere.AppendFormat(" AND (VIS_MOBNO LIKE '{0}%' OR VIS_ALTR_MOBNO LIKE '{0}%')", EscapeSqlLike(fieldValue));
+                        if (fieldValue.Equals("HASDATA",StringComparison.OrdinalIgnoreCase))
+                        {
+                            searchWhere.AppendFormat(" AND ((VIS_MOBNO IS NOT NULL AND LTRIM(RTRIM(VIS_MOBNO))<>'') " +
+                                "OR (VIS_ALTR_MOBNO IS NOT NULL AND LTRIM(RTRIM(VIS_ALTR_MOBNO)) <> ''))");
+                                
+                        }
+                        else if (fieldValue.Equals("NODATA", StringComparison.OrdinalIgnoreCase))
+                        {
+                            searchWhere.Append(" AND ((VIS_MOBNO IS NULL OR LTRIM(RTRIM(VIS_MOBNO)) = '') " +
+                                      "AND (VIS_ALTR_MOBNO IS NULL OR LTRIM(RTRIM(VIS_ALTR_MOBNO)) = ''))");
+                        }
+                        else
+                        {
+                              searchWhere.AppendFormat(
+                                        " AND (VIS_MOBNO LIKE '{0}%' OR VIS_ALTR_MOBNO LIKE '{0}%')",
+                               EscapeSqlLike(fieldValue)
+                               );
+                        }
                         break;
 
                     default:
-                        searchWhere.AppendFormat(" AND {0} LIKE N'%{1}%'", fieldName, EscapeSqlLike(fieldValue));
+                        switch(fieldValue.ToUpper())
+                        {
+                            case "HASDATA":
+                                searchWhere.AppendFormat(" AND ({0} IS NOT NULL AND LTRIM(RTRIM({0})) <> '')", fieldName);
+                                break;
+                            case "NODATA":
+                                searchWhere.AppendFormat(" AND ({0} IS NULL OR LTRIM(RTRIM({0})) = '')", fieldName);
+                                break;
+
+                            default:
+                                searchWhere.AppendFormat(
+                                    " AND {0} LIKE N'%{1}%'",
+                                    fieldName,
+                                    EscapeSqlLike(fieldValue)
+                                );
+                                break;
+                        }
                         break;
+
                 }
             }
 
