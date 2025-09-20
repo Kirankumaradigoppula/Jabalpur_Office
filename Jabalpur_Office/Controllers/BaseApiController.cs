@@ -355,35 +355,28 @@ namespace Jabalpur_Office.Controllers
             if (input == null)
                 return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            // Serialize to JSON, then deserialize to Dictionary
+            //// Serialize to JSON, then deserialize to Dictionary
             var json = JsonSerializer.Serialize(input);
             return JsonSerializer.Deserialize<Dictionary<string, string>>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             }) ?? new Dictionary<string, string>();
+
+            // Deserialize to Dictionary<string, object> first
+            //var json = JsonSerializer.Serialize(input);
+            //var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(json,
+            //    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            //    ?? new Dictionary<string, object>();
+
+            //// Convert all values to string
+            //return dict.ToDictionary(
+            //    kvp => kvp.Key,
+            //    kvp => kvp.Value?.ToString() ?? string.Empty,
+            //    StringComparer.OrdinalIgnoreCase
+            //);
         }
 
-        protected void LogError12(Exception ex, string location)
-        {
-            try
-            {
-                string fullError = ex.ToString();
-                List<SqlParameter> logParams = new List<SqlParameter>
-                {
-                    new SqlParameter("@pMP_SEAT_ID", (object?)pJWT_MP_SEAT_ID ?? DBNull.Value),
-                    new SqlParameter("@pAPI_NAME", location ?? "Unknown"),
-                    new SqlParameter("@pERRORMESSAGE", ex.Message ?? "No message"),
-                    new SqlParameter("@pSTACKTRACE", fullError ?? ""),
-                    new SqlParameter("@pEUSER", (object?)pJWT_USERID ?? DBNull.Value)
-                };
-
-                __core.ExecProcDt("InsertApiErrorLog", logParams.ToArray()); // Assuming this SP exists
-            }
-            catch (Exception loggingEx)
-            {
-                Console.WriteLine($"Logging failed: {loggingEx.Message}");
-            }
-        }
+        
 
         protected void LogError(Exception ex, string location)
         {
@@ -394,17 +387,17 @@ namespace Jabalpur_Office.Controllers
                 string fullError = ex.ToString();
 
                 var logParams = new List<SqlParameter>
-        {
-            new SqlParameter("@pMP_SEAT_ID", string.IsNullOrEmpty(pJWT_MP_SEAT_ID?.ToString())
-                                              ? (object)DBNull.Value
-                                              : pJWT_MP_SEAT_ID),
-            new SqlParameter("@pAPI_NAME", string.IsNullOrEmpty(location) ? "Unknown" : location),
-            new SqlParameter("@pERRORMESSAGE", string.IsNullOrEmpty(ex.Message) ? "No message" : ex.Message),
-            new SqlParameter("@pSTACKTRACE", fullError ?? ""),
-            new SqlParameter("@pEUSER", string.IsNullOrEmpty(pJWT_USERID?.ToString())
-                                        ? (object)DBNull.Value
-                                        : pJWT_USERID)
-        };
+                {
+                    new SqlParameter("@pMP_SEAT_ID", string.IsNullOrEmpty(pJWT_MP_SEAT_ID?.ToString())
+                                                      ? (object)DBNull.Value
+                                                      : pJWT_MP_SEAT_ID),
+                    new SqlParameter("@pAPI_NAME", string.IsNullOrEmpty(location) ? "Unknown" : location),
+                    new SqlParameter("@pERRORMESSAGE", string.IsNullOrEmpty(ex.Message) ? "No message" : ex.Message),
+                    new SqlParameter("@pSTACKTRACE", fullError ?? ""),
+                    new SqlParameter("@pEUSER", string.IsNullOrEmpty(pJWT_USERID?.ToString())
+                                                ? (object)DBNull.Value
+                                                : pJWT_USERID)
+                };
 
                 if (__core != null) // ✅ avoid null reference on _core
                 {
