@@ -20,6 +20,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using System.Reflection.Emit;
 using Microsoft.IdentityModel.Tokens;
+using System.IO;
+using System.Linq;
 
 namespace Jabalpur_Office.Controllers
 {
@@ -316,46 +318,236 @@ namespace Jabalpur_Office.Controllers
                 // Step 3: Execute stored procedure
                 DataTable dt = _core.ExecProcDt("ReactVerifyOTP", paramList.ToArray());
 
-                // // Step 4: Map result to output wrapper
-                // ApiHelper.SetSingleRowOutput(dt, outObj);
-                // SetOutput(pStatus, pMsg, outObj);
+                //var resultObject = new Dictionary<string, object>
+                //{
+                //    ["OTPStatus"] = new Dictionary<string, string>
+                //    {
+                //       { "StatusCode", pStatus?.Value?.ToString() ?? "500" },
+                //       { "Message", pMsg?.Value?.ToString() ?? "Internal Error" }
+                //    }
+                //};
 
-                var resultObject = new Dictionary<string, object>();
-
-                // Always return the input role/mobno
-                var otpStatus = new Dictionary<string, string>
-                {
-                    { "MOBNO", data.TryGetValue("MOBNO", out var mob) ? mob?.ToString() ?? "" : "" },
-                    { "ROLE", data.TryGetValue("ROLE", out var role) ? role?.ToString() ?? "" : "" }
-                };
-
-                resultObject["OTPStatus"] = otpStatus;
-
-                if (pStatus?.Value?.ToString() == "200")
-                {
-
-                }
-                else
-                {
-                    resultObject["MenuRights"] = new List<Dictionary<string, object>>();
-                }
-
-                // Set result
-                outObj.DataObject = resultObject;
+                //// Set result
+                //outObj.DataObject = resultObject;
                 outObj.StatusCode = int.Parse(pStatus.Value?.ToString() ?? "500");
                 outObj.Message = pMsg.Value?.ToString() ?? "Internal Error";
-
-
-
                 return outObj;
 
             }, nameof(VerifyOTP), out _, skipTokenCheck: false));
         }
 
+       
+
+        [HttpPost("GetWebPortalUserMenuRights")]
+        public IActionResult GetWebPortalUserMenuRights([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperObjectData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId:pJWT_USERID,
+                    includeTotalCount: true,
+                    includeWhere: false
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactWebPortalUserMenuRights", paramList.ToArray());
+                //ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+                //&& data["FLAG"]?.ToString() == "USER_MENU_LIST"
+                if (outObj.StatusCode == 200   )
+                {
+                    var flag = data["FLAG"]?.ToString();
+
+                    var flatMenuList = dt.AsEnumerable()
+                        .Select(r => new MenuItem
+                        {
+                            MENU_MAS_ID = (flag == "USER_MENU_LIST" || flag == "USER_MENU_RIGHTS") ? r["MENU_MAS_ID"].ToString() : null,
+                            MENUID = (flag == "USER_MENU_LIST" || flag == "USER_MENU_RIGHTS") ? r["MENUID"].ToString() : null,
+                            MENUNM = (flag == "USER_MENU_LIST" || flag == "USER_MENU_RIGHTS") ? r["MENUNM"].ToString() : null,
+                            MENUGROUP = (flag == "USER_MENU_LIST" || flag == "USER_MENU_RIGHTS") ? r["MENUGROUP"].ToString() : null,
+                            PARENTID = (flag == "USER_MENU_LIST" || flag == "USER_MENU_RIGHTS") ? r["PARENTID"]?.ToString() : null,
+                            PARENTMENU = (flag == "USER_MENU_LIST" || flag == "USER_MENU_RIGHTS") ? r["PARENTMENU"]?.ToString() : null,
+                            PATH = (flag == "USER_MENU_LIST") ? r["PATH"]?.ToString() : null,
+                            ICON = (flag == "USER_MENU_LIST" || flag == "USER_MENU_RIGHTS") ? r["ICON"]?.ToString() : null,
+                            MENU_HAS_ACCESS = ( flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["MENU_HAS_ACCESS"]) : 0,
+                            C_USER_ACCESS = (flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["C_USER_ACCESS"]) : 0,
+                            U_USER_ACCESS = (flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["U_USER_ACCESS"]) : 0,
+                            D_USER_ACCESS = (flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["D_USER_ACCESS"]) : 0,
+                            ID = (flag == "USER_MENU_RIGHTS") ? r["ID"]?.ToString() : null,
+                            MENU_RIGHT_ID = (flag == "USER_MENU_RIGHTS") ? r["MENU_RIGHT_ID"]?.ToString() : null,
+                            STATUS = r["STATUS"].ToString() == "Y",
+                            LEVEL = Convert.ToInt32(r["LEVEL"]),
+                            HierarchyPath = r["HierarchyPath"].ToString()
+                        })
+                        .ToList();
+
+                    // Build lookup
+                    //var lookup = flatMenuList
+                    //     .GroupBy(x => x.MENUID)
+                    //     .ToDictionary(g => g.Key, g => g.First());
+                    //
+                    var lookup = new Dictionary<string, MenuItem>();
+                    foreach (var item in flatMenuList)
+                    {
+                        // Composite key avoids duplicate key error
+                        var key = $"{item.MENUID}|{item.PARENTMENU}|{item.PARENTID}";
+                        if (!lookup.ContainsKey(key))
+                            lookup[key] = item;
+                    }
+
+                    // Build tree
+                    var rootItems = new List<MenuItem>();
+
+                    // Step 1: Attach menus according to hierarchy rules
+                    foreach (var item in flatMenuList)
+                    {
+                        if (string.IsNullOrEmpty(item.PARENTMENU) && string.IsNullOrEmpty(item.PARENTID))
+                        {
+                            rootItems.Add(item); // Root menu
+                        }
+                        else if (string.IsNullOrEmpty(item.PARENTID) && !string.IsNullOrEmpty(item.PARENTMENU))
+                        {
+                            // Find parent using composite key
+                            var parentKey = $"{item.PARENTMENU}|{""}|{""}";
+                            if (lookup.ContainsKey(parentKey))
+                                lookup[parentKey].Children.Add(item);
+                        }
+                        else if (!string.IsNullOrEmpty(item.PARENTID) && !string.IsNullOrEmpty(item.PARENTMENU))
+                        {
+                            var parentKey = $"{item.PARENTID}|{item.PARENTMENU}|{""}";
+                            if (lookup.ContainsKey(parentKey))
+                                lookup[parentKey].Children.Add(item);
+                        }
+                        else
+                        {
+                            rootItems.Add(item); // fallback
+                        }
+                    }
+                    // Filter inactive recursively
+                    void FilterMenu(MenuItem menu)
+                    {
+                        menu.Children = menu.Children
+                            .Where(c => c.STATUS)
+                            .OrderBy(c => c.MENUID)
+                            .ToList();
+                        foreach (var child in menu.Children)
+                            FilterMenu(child);
+                    }
+                    foreach (var root in rootItems.Where(x => x.STATUS))
+                        FilterMenu(root);
+
+                    // Convert to dictionary (for JSON output)
+                    outObj.DataObject = ConvertToDict(rootItems, flag);
+                }
+                
+                return outObj;
+
+
+            }, nameof(GetWebPortalUserMenuRights), out _, skipTokenCheck: false));
+        }
+
+        List<Dictionary<string, object>> ConvertToDict(List<MenuItem> menus, string flag)
+        {
+            /*return menus.Select(m => new Dictionary<string, object>
+            {
+                ["MENUID"] = m.MENUID ?? "",
+                ["MENUNM"] = m.MENUNM ?? "",
+                ["MENUGROUP"] = m.MENUGROUP ?? "",
+                ["PARENTID"] = m.PARENTID ?? "",
+                ["PARENTMENU"] = m.PARENTMENU ?? "",
+                ["STATUS"] = m.STATUS ? "Y" : "N",
+                ["PATH"] = m.PATH ?? "",
+                ["ICON"] = m.ICON ?? "",
+                ["MENU_HAS_ACCESS"] = m.MENU_HAS_ACCESS ?? "",
+                ["LEVEL"] = m.LEVEL.ToString(),
+                ["Children"] = ConvertToDict(m.Children) // 🔁 recursive call
+            }).ToList();*/
+
+            return menus.Select(m =>
+            {
+                
+                var dict = new Dictionary<string, object>();
+                // Always include common fields
+                dict["MENUID"] = m.MENUID ?? "";
+                dict["MENUNM"] = m.MENUNM ?? "";
+                dict["MENUGROUP"] = m.MENUGROUP ?? "";
+                dict["PARENTID"] = m.PARENTID ?? "";
+                dict["PARENTMENU"] = m.PARENTMENU ?? "";
+
+                dict["STATUS"] = m.STATUS ? "Y" : "N";
+                dict["LEVEL"] = m.LEVEL.ToString();
+
+                if (flag == "USER_MENU_RIGHTS")
+                {
+                    dict["MENU_HAS_ACCESS"] = m.MENU_HAS_ACCESS.ToString();
+                    dict["C_USER_ACCESS"] = m.C_USER_ACCESS.ToString();
+                    dict["U_USER_ACCESS"] = m.U_USER_ACCESS.ToString();
+                    dict["D_USER_ACCESS"] = m.D_USER_ACCESS.ToString();
+                    dict["ID"] = m.ID ?? "";
+                    dict["MENU_RIGHT_ID"] = m.MENU_RIGHT_ID ?? "";
+                    dict["ICON"] = m.ICON ?? "";
+
+                }
+                if (flag == "USER_MENU_LIST")
+                {
+                    dict["PATH"] = m.PATH ?? "";
+                    dict["ICON"] = m.ICON ?? "";
+                }
+
+              
+
+                // Children recursive call (only if not empty)
+                var children = ConvertToDict(m.Children, flag);
+                if (children.Any())
+                {
+                    dict["Children"] = children;
+                }
+
+                return dict;
+
+            }).ToList();
+
+           
+
+        }
+
+
+        [HttpPost("CrudWebPortalUserMenuRights")]
+        public IActionResult CrudWebPortalUserMenuRights([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudWebPortalUserMenuRights", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudWebPortalUserMenuRights), out _, skipTokenCheck: false));
+
+        }
+
+
         //6.
 
-        [HttpPost]
-        [Route("GetConstructionWorkDetails")]
+        [HttpPost("GetConstructionWorkDetails")]
         public IActionResult GetConstructionWorkDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -380,6 +572,8 @@ namespace Jabalpur_Office.Controllers
                 );
 
                 DataTable dt = _core.ExecProcDt("ReactConstructionWorkDetails", paramList.ToArray());
+
+               
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
 
@@ -397,8 +591,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         //7
-        [HttpPost]
-        [Route("GetConstructionFormFieldDetails")]
+        [HttpPost("GetConstructionFormFieldDetails")]
         public IActionResult GetConstructionFormFieldDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -432,8 +625,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         //8
-        [HttpPost]
-        [Route("GetConstructionStagesDetails")]
+        [HttpPost("GetConstructionStagesDetails")]
         public IActionResult GetConstructionStagesDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -464,8 +656,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         //9
-        [HttpPost]
-        [Route("CrudConstructionWorkDetails_Single")]
+        [HttpPost("CrudConstructionWorkDetails_Single")]
         public IActionResult CrudConstructionWorkDetails_Single([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -495,8 +686,7 @@ namespace Jabalpur_Office.Controllers
         
 
         //10
-        [HttpPost]
-        [Route("CrudConstructionWorkDetails")]
+        [HttpPost("CrudConstructionWorkDetails")]
         //CrudConstructionWorkDetailsWithImage
         public IActionResult CrudConstructionWorkDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
@@ -509,6 +699,7 @@ namespace Jabalpur_Office.Controllers
                     var jObj = Newtonsoft.Json.Linq.JObject.Parse(input);
                     jObj.Remove("FILE_STATUS");
                     jObj.Remove("P_FILE_STATUS");
+                    jObj.Remove("M_FILE_STATUS");
                     input = jObj.ToString();
                 }
 
@@ -535,7 +726,7 @@ namespace Jabalpur_Office.Controllers
                 DataTable dt = _core.ExecProcDt("ReactCrudConstructionWorkDetails", paramList.ToArray());
                 SetOutput(pStatus, pMsg, outObj);
 
-                if (outObj.StatusCode == 200 &&  (data["STAGES_MAS_ID"]?.ToString() =="7" || data["STAGES_MAS_ID"]?.ToString() == "9"))
+                if (outObj.StatusCode == 200 &&  (data["STAGES_MAS_ID"]?.ToString() == "1" || data["STAGES_MAS_ID"]?.ToString() =="7" || data["STAGES_MAS_ID"]?.ToString() == "9"))
                 {
                     // Step 1: Validate & handle file uploads
                     if (files != null && files.Count > 0)
@@ -563,8 +754,7 @@ namespace Jabalpur_Office.Controllers
         }
         
         //10
-        [HttpPost]
-        [Route("CrudConstructionImages")]
+        [HttpPost("CrudConstructionImages")]
         public IActionResult CrudConstructionImages([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -762,22 +952,6 @@ namespace Jabalpur_Office.Controllers
                                 }
                             }
 
-
-                            //// ✅ Step 2: Delete file from server if exists
-                            //if (!string.IsNullOrEmpty(pFILE_PATH) && System.IO.File.Exists(pFILE_PATH))
-                            //    {
-                            //        System.IO.File.Delete(pFILE_PATH);
-                            //    }
-
-                            //   if (!string.IsNullOrEmpty(pFILE_PATH))
-                            //   {
-                            //       string folderPath = Path.Combine(_settings.BasePath, pFILE_PATH);
-                               
-                            //       if (Directory.Exists(folderPath) && !Directory.EnumerateFileSystemEntries(folderPath).Any())
-                            //       {
-                            //           Directory.Delete(folderPath, true); // true = recursive delete if empty
-                            //       }
-                            //   }
                             }
                         }
                 }
@@ -789,8 +963,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         //11
-        [HttpPost]
-        [Route("GetConstructionDocumentMasterDetails")]
+        [HttpPost("GetConstructionDocumentMasterDetails")]
         public IActionResult GetConstructionDocumentMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -821,8 +994,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         //12
-        [HttpPost]
-        [Route("CrudConstructionFormFieldDetails")]
+        [HttpPost("CrudConstructionFormFieldDetails")]
         public IActionResult CrudConstructionFormFieldDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -851,8 +1023,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         //11
-        [HttpPost]
-        [Route("GetConstructionFormFieldMasterDetails")]
+        [HttpPost("GetConstructionFormFieldMasterDetails")]
         public IActionResult GetConstructionFormFieldMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -885,8 +1056,7 @@ namespace Jabalpur_Office.Controllers
 
 
         //12
-        [HttpPost]
-        [Route("GetInspectionProgessStatusDetails")]
+        [HttpPost("GetInspectionProgessStatusDetails")]
         public IActionResult GetInspectionProgessStatusDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -916,8 +1086,7 @@ namespace Jabalpur_Office.Controllers
 
         }
 
-        [HttpPost]
-        [Route("CrudConstructionInspectionDetails")]
+        [HttpPost("CrudConstructionInspectionDetails")]
         public IActionResult CrudConstructionInspectionDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling( () =>
@@ -980,8 +1149,7 @@ namespace Jabalpur_Office.Controllers
 
         
 
-        [HttpPost]
-        [Route("GetConstructionInspectionDetails")]
+        [HttpPost("GetConstructionInspectionDetails")]
         public  IActionResult GetConstructionInspectionDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1021,8 +1189,7 @@ namespace Jabalpur_Office.Controllers
 
         }
 
-        [HttpPost]
-        [Route("GetConstructionInspectionReportDetails")]
+        [HttpPost("GetConstructionInspectionReportDetails")]
         public IActionResult GetConstructionInspectionReportDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1063,8 +1230,8 @@ namespace Jabalpur_Office.Controllers
         }
 
 
-        [HttpPost]
-        [Route("CrudConstructionInspectionDelayedDetails")]
+
+        [HttpPost("CrudConstructionInspectionDelayedDetails")]
         public IActionResult CrudConstructionInspectionDelayedDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1096,6 +1263,369 @@ namespace Jabalpur_Office.Controllers
 
         }
 
+
+        [HttpPost("CrudVisitorConstructionWorkDetails")]
+        public IActionResult CrudVisitorConstructionWorkDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                   string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+                 );
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudVisitorConstructionWorkDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+
+                if (outObj.StatusCode == 200 && files != null && files.Count > 0)
+                {
+                    string[] allowedExt = new[] { ".jpg", ".jpeg", ".png", ".pdf" };
+                    foreach (var file in files)
+                    {
+                        string FileName = string.Empty;
+                        string FilePath = string.Empty;
+                        string ext = string.Empty;
+                        if (file.Length > 0)
+                        {
+                            ext = Path.GetExtension(file.FileName).ToLower();
+                            if (!allowedExt.Contains(ext))
+                            {
+                                outObj.StatusCode = 500;
+                                outObj.Message = "Only JPG, PNG, and PDF files are allowed.";
+                                outObj.LoginStatus = pJWT_LOGIN_NAME;
+                                return outObj;
+                            }
+                            var storageRoot = _settings.BasePath;
+                            string baseFolder = string.Empty;
+                            baseFolder = $"image/MP_{pJWT_MP_SEAT_ID}/visitorAttachedFiles/";
+                            string finalFolder = Path.Combine(storageRoot, baseFolder);
+                            if (!Directory.Exists(finalFolder))
+                            {
+                                Directory.CreateDirectory(finalFolder);
+                            }
+
+                            // Build file name safely
+                            FileName = $"{pJWT_MP_SEAT_ID}_{outObj.RetID}{ext}";
+                            FilePath = Path.Combine(baseFolder, FileName);
+                            string FileFinalPath = Path.Combine(finalFolder, FileName);
+
+                            // ✅ If file already exists, delete it before saving
+                            if (System.IO.File.Exists(FileFinalPath))
+                            {
+                                System.IO.File.Delete(FileFinalPath);
+                            }
+
+                            // ✅ Save the uploaded file to server
+                            using (var stream = new FileStream(FileFinalPath, FileMode.Create))
+                            {
+                                //await file.CopyToAsync(stream); // file is IFormFile
+                                file.CopyTo(stream); // sync version
+                            }
+
+                            string vQryUpdateStatus = $"UPDATE VISITOR SET VIS_INWARD_DOCUMENT='" + FileName + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND VIS_SRNO='" + outObj.RetID + "' ";
+                            _core.ExecNonQuery(vQryUpdateStatus);
+
+
+                        }
+                    }
+                }
+                
+                return outObj;
+
+            }, nameof(CrudVisitorConstructionWorkDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetConstructionVisitorDetails")]
+        public IActionResult GetConstructionVisitorDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactConstructionVisitorDetailsList", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetConstructionVisitorDetails), out _, skipTokenCheck: false));
+
+
+        }
+
+        [HttpPost("CrudPortalRoleDetails")]
+        public IActionResult CrudPortalRoleDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudPortalRoleDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudPortalRoleDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetPortalRoleMasterDetails")]
+        public IActionResult GetPortalRoleMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters using helper
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    includeTotalCount: false,
+                    includeWhere: false
+                );
+
+                // Step 3: Execute stored procedure
+                DataTable dt = _core.ExecProcDt("ReactPortalRoleMasterDetails", paramList.ToArray());
+
+                // Step 4: Populate output object
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                return outObj;
+
+
+            }, nameof(GetPortalRoleMasterDetails), out _, skipTokenCheck: false));
+        }
+
+
+        [HttpPost("GetWebPortalUserRegDetails")]
+        public IActionResult GetWebPortalUserRegDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactWebPortalUserRegDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                //Get Menu Crud Access For Login Userid 
+                if (dt != null && dt.Rows.Count > 0)
+                {
+                    var row = dt.AsEnumerable().FirstOrDefault(r => r["USERID"]?.ToString() == pJWT_USERID);
+                    if (row != null && dt.Columns.Contains("MENU_CRUD_ACCESS"))
+                    {
+                        outObj.ExtraData["MENU_CRUD_ACCESS"] = row["MENU_CRUD_ACCESS"]?.ToString();
+                    }
+                }
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetWebPortalUserRegDetails), out _, skipTokenCheck: false));
+
+
+        }
+
+
+        [HttpPost("CrudWebPortalUserDetails")]
+        public IActionResult CrudWebPortalUserDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudWebPortalUserDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudWebPortalUserDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetReasonMasterDetails")]
+        public IActionResult GetReasonMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactReasonMasterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetReasonMasterDetails), out _, skipTokenCheck: false));
+
+
+        }
+
+
+        [HttpPost("CrudReasonMasterDetails")]
+        public IActionResult CrudReasonMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudReasonMasterDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudReasonMasterDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("UpdateRowOrderFromCSV")]
+        public IActionResult UpdateRowOrderFromCSV([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, _) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: false
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactUpdateRowOrderFromCSV", paramList.ToArray());
+                SetOutputParams(pStatus, pMsg,  outObj);
+                return outObj;
+
+            }, nameof(UpdateRowOrderFromCSV), out _, skipTokenCheck: false));
+
+        }
 
     }
 }
