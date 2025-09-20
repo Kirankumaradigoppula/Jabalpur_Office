@@ -29,7 +29,9 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", policy =>
         policy.AllowAnyOrigin()
               .AllowAnyMethod()
-              .AllowAnyHeader());
+              .AllowAnyHeader()
+              .WithExposedHeaders("Content-Disposition")); // 👈 Needed for file downloads
+              
 });
 
 //Dependency Injection
