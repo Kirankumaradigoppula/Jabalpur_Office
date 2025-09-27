@@ -424,7 +424,7 @@ namespace Jabalpur_Office.Helpers
                 };
 
                 // Output: Message
-                var pMsg = new SqlParameter("@pMessage", SqlDbType.VarChar, 500)
+                var pMsg = new SqlParameter("@pMessage", SqlDbType.NVarChar, 500)
                 {
                     Direction = ParameterDirection.Output
                 };
@@ -703,7 +703,7 @@ namespace Jabalpur_Office.Helpers
                         else
                         {
                               searchWhere.AppendFormat(
-                                        " AND (VIS_MOBNO LIKE '{0}%' OR VIS_ALTR_MOBNO LIKE '{0}%')",
+                                        " AND (VIS_MOBNO LIKE '%{0}%' OR VIS_ALTR_MOBNO LIKE '%{0}%')",
                                EscapeSqlLike(fieldValue)
                                );
                         }
