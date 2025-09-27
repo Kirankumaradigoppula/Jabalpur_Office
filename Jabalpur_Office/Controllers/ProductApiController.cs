@@ -454,20 +454,7 @@ namespace Jabalpur_Office.Controllers
 
         List<Dictionary<string, object>> ConvertToDict(List<MenuItem> menus, string flag)
         {
-            /*return menus.Select(m => new Dictionary<string, object>
-            {
-                ["MENUID"] = m.MENUID ?? "",
-                ["MENUNM"] = m.MENUNM ?? "",
-                ["MENUGROUP"] = m.MENUGROUP ?? "",
-                ["PARENTID"] = m.PARENTID ?? "",
-                ["PARENTMENU"] = m.PARENTMENU ?? "",
-                ["STATUS"] = m.STATUS ? "Y" : "N",
-                ["PATH"] = m.PATH ?? "",
-                ["ICON"] = m.ICON ?? "",
-                ["MENU_HAS_ACCESS"] = m.MENU_HAS_ACCESS ?? "",
-                ["LEVEL"] = m.LEVEL.ToString(),
-                ["Children"] = ConvertToDict(m.Children) // 🔁 recursive call
-            }).ToList();*/
+            
 
             return menus.Select(m =>
             {
@@ -1554,6 +1541,20 @@ namespace Jabalpur_Office.Controllers
                 );
 
                 DataTable dt = _core.ExecProcDt("ReactReasonMasterDetails", paramList.ToArray());
+
+                // ✅ Convert PURPOSE_LIST into sub-array
+                //var list = dt.AsEnumerable().Select(row => new
+                //{
+                //    REASON_MAS_ID = row["REASON_MAS_ID"],
+                //    REASON_NAME = row["REASON_NAME"],
+                //    PURPOSES = row["PURPOSE_LIST"]?.ToString()
+                //                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                //                .Select(pid => new {
+                //                    PURPOSE_ID = pid.Trim()
+                //                    //PURPOSE_NAME = GetPurposeName(pid.Trim()) // 🔹 Lookup method
+                //                }).ToList()
+                //}).ToList();
+
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
 
@@ -1626,6 +1627,232 @@ namespace Jabalpur_Office.Controllers
             }, nameof(UpdateRowOrderFromCSV), out _, skipTokenCheck: false));
 
         }
+
+        [HttpPost("GetVisitorDetailsList")]
+        public IActionResult GetVisitorDetailsList([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                var pTotalAmount = new SqlParameter("@pTotalAmount", SqlDbType.Int)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(pTotalAmount);
+
+                DataTable dt = _core.ExecProcDt("ReactVisitorDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // Read @pTotalAmount output value safely
+                if (pTotalAmount.Value != DBNull.Value)
+                {
+                    outObj.ExtraData["TotalAmount"] = Convert.ToInt32(pTotalAmount.Value);
+                }
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetVisitorDetailsList), out _, skipTokenCheck: false));
+
+
+        }
+
+        [HttpPost("CrudAppointmentDetails")]
+        public IActionResult CrudAppointmentDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                data["ENTRY_FROM"] = "PORTAL";
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudAppointmentDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudAppointmentDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetAppointmentDetails")]
+        public IActionResult GetAppointmentDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactAppointmentDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetAppointmentDetails), out _, skipTokenCheck: false));
+
+
+        }
+
+        [HttpPost("GetShokLetterDetails")]
+        public IActionResult GetShokLetterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactShokLetterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetShokLetterDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudShokLetterDetails")]
+        public IActionResult CrudShokLetterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudShokLetterDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudShokLetterDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetMediaCategoryDetails")]
+        public IActionResult GetMediaCategoryDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactMediaCategoryDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetMediaCategoryDetails), out _, skipTokenCheck: false));
+        }
+
 
     }
 }
