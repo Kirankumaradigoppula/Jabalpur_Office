@@ -22,6 +22,9 @@ using System.Reflection.Emit;
 using Microsoft.IdentityModel.Tokens;
 using System.IO;
 using System.Linq;
+using iTextSharp.text;
+using iTextSharp.text.pdf;
+using System.Drawing;
 
 namespace Jabalpur_Office.Controllers
 {
@@ -1851,6 +1854,540 @@ namespace Jabalpur_Office.Controllers
                 return outObj;
 
             }, nameof(GetMediaCategoryDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudMediaCategoryDetails")]
+        public IActionResult CrudMediaCategoryDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+
+            var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+             string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+            );
+            var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+            var filterKeys = ApiHelper.GetFilteredKeys(data);
+            string pImagePath = string.Empty;
+
+            if (data["FLAG"]?.ToString() == "SAVE")
+            {
+                if (!(files != null && files.Count > 0))
+                {
+                    outObj.StatusCode = 500;
+                    outObj.Message = "Media Cover file is required.";
+                    outObj.LoginStatus = pJWT_LOGIN_NAME;
+                    return outObj;
+                }
+            }
+            if (data["FLAG"]?.ToString() == "DELETE")
+            {
+
+                string pQry = @"SELECT TOP 1 IMAGE_PATH FROM MEDIA_ALBUM_CATEGORY  WHERE MP_SEAT_ID = @MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID";
+                // Get old MEDIA_DATE from DB (before update)
+                pImagePath = Convert.ToString(
+                     _core.ExecScalarText(
+                          pQry,
+                           new[] {
+                               new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                               new SqlParameter("@MEDIA_ALBUM_ID", data["MEDIA_ALBUM_ID"]?.ToString())
+
+                           }
+                      )
+                   );
+            }
+
+            if (data["FLAG"]?.ToString() == "UPDATE")
+            {
+                string newMediaDate = data["MEDIA_DATE"]?.ToString();
+                // Get old MEDIA_DATE from DB
+                string oldMediaDate = Convert.ToString(_core.ExecScalarText(
+                    @"SELECT TOP 1 FORMAT(MEDIA_DATE,'dd-MM-yyyy') 
+                                  FROM MEDIA_ALBUM_CATEGORY  
+                                  WHERE MP_SEAT_ID=@MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID",
+                                        new[]
+                                        {
+                                            new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                                            new SqlParameter("@MEDIA_ALBUM_ID", data["MEDIA_ALBUM_ID"]?.ToString())
+                                        }
+                ));
+
+                if (!string.IsNullOrEmpty(oldMediaDate) && oldMediaDate != newMediaDate)
+                {
+                    // Move all images for this album to new MEDIA_DATE folder
+                    string oldFolder = Path.Combine(_settings.BasePath, $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{oldMediaDate}");
+                    string newFolder = Path.Combine(_settings.BasePath, $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{newMediaDate}");
+                    string pMediaAlbumId = data["MEDIA_ALBUM_ID"]?.ToString();
+
+                    if (!Directory.Exists(newFolder))
+                        Directory.CreateDirectory(newFolder);
+                        /* Start Media Cover Image */
+                        string pMCqry = @"
+                           SELECT  IMAGE, IMAGE_PATH
+                           FROM MEDIA_ALBUM_CATEGORY
+                           WHERE MP_SEAT_ID = @SeatId
+                             AND MEDIA_ALBUM_ID = @AlbumId";
+
+                        DataTable dtCoverImages = _core.ExecDtText(
+                            pMCqry,
+                            new[]
+                            {
+                                  new SqlParameter("@SeatId", pJWT_MP_SEAT_ID),
+                                  new SqlParameter("@AlbumId", pMediaAlbumId),
+                            }
+                        );
+                        foreach (DataRow row in dtCoverImages.Rows)
+                        {
+                            string oldFilePath = Path.Combine(_settings.BasePath, row["IMAGE_PATH"].ToString().Replace("/", "\\"));
+                            if (System.IO.File.Exists(oldFilePath))
+                            {
+                                string newFilePath = Path.Combine(newFolder, row["IMAGE"].ToString());
+                                System.IO.File.Move(oldFilePath, newFilePath);
+
+                                string newRelativePath = $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{newMediaDate}/{row["IMAGE"]}";
+
+                                string vQryNewMCPathStatus = $"UPDATE MEDIA_ALBUM_CATEGORY SET IMAGE_PATH='" + newRelativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MEDIA_ALBUM_ID='" + pMediaAlbumId + "' ";
+                                _core.ExecNonQuery(vQryNewMCPathStatus);
+
+                            }
+                        }
+
+                        /* End Media Cover Image */
+                        /* Start Medial Album Details  -29-09-2025*/
+                        string pMqry = @"
+                           SELECT MEDIA_ALBUM_DET_ID, IMAGE, IMAGE_PATH
+                           FROM MEDIA_ALBUM_DETAILS
+                           WHERE MP_SEAT_ID = @SeatId
+                             AND MEDIA_ALBUM_ID = @AlbumId";
+
+                    // Get all images for this album
+                         DataTable dtImages = _core.ExecDtText(
+                           pMqry,
+                           new[]
+                           {
+                               new SqlParameter("@SeatId", pJWT_MP_SEAT_ID),
+                               new SqlParameter("@AlbumId", pMediaAlbumId),
+                           }
+                          );
+
+
+                        foreach (DataRow row in dtImages.Rows)
+                        {
+                            string oldFilePath = Path.Combine(_settings.BasePath, row["IMAGE_PATH"].ToString().Replace("/", "\\"));
+                            if (System.IO.File.Exists(oldFilePath))
+                            {
+                                string newFilePath = Path.Combine(newFolder, row["IMAGE"].ToString());
+                                System.IO.File.Move(oldFilePath, newFilePath);
+
+                                string newRelativePath = $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{newMediaDate}/{row["IMAGE"]}";
+
+                                string vQryNewPathStatus = $"UPDATE MEDIA_ALBUM_DETAILS SET IMAGE_PATH='" + newRelativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MEDIA_ALBUM_DET_ID='" + row["MEDIA_ALBUM_DET_ID"] + "' ";
+                                _core.ExecNonQuery(vQryNewPathStatus);
+
+                            }
+                        }
+                   /* End Media Album Details  -29-09-2025*/
+                        // Remove old folder if empty
+                        if (Directory.Exists(oldFolder) && !Directory.EnumerateFileSystemEntries(oldFolder).Any())
+                            Directory.Delete(oldFolder, true);
+                    }
+
+                }
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudMediaCategoryDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                if (outObj.StatusCode == 200)
+                {
+                    if (data["FLAG"]?.ToString() == "SAVE" || data["FLAG"]?.ToString() == "UPDATE")
+                    {
+                        
+                        if (files != null && files.Count > 0)
+                        {
+                            if (files.Count > 1)
+                            {
+                                outObj.StatusCode = 500;
+                                outObj.Message = "You can upload a maximum of One files.";
+                                outObj.LoginStatus = pJWT_LOGIN_NAME;
+                                return outObj;
+                            }
+                            //string[] allowedExt = new[] { ".jpg", ".jpeg", ".png", ".pdf" };
+                            foreach (var file in files)
+                            {
+                                
+                                string FileName = string.Empty;
+                                string FilePath = string.Empty;
+                                string ext = string.Empty;
+                                if (file.Length > 0)
+                                {
+                                    var storageRoot = _settings.BasePath;
+                                    string baseFolder = string.Empty;
+                                    ext = Path.GetExtension(file.FileName).ToLower();
+                                    baseFolder = $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{data["MEDIA_DATE"]}/";
+                                    string finalFolder = Path.Combine(storageRoot, baseFolder);
+                                    if (!Directory.Exists(finalFolder))
+                                    {
+                                        Directory.CreateDirectory(finalFolder);
+                                    }
+                                    // Build file name safely
+                                    FileName = $"Media_Cover_{outObj.RetID}{ext}";
+                                    FilePath = Path.Combine(baseFolder, FileName);
+                                    string FileFinalPath = Path.Combine(finalFolder, FileName);
+                                    // ✅ If file already exists, delete it before saving
+                                    if (System.IO.File.Exists(FileFinalPath))
+                                    {
+                                        System.IO.File.Delete(FileFinalPath);
+                                    }
+
+                                    // ✅ Save the uploaded file to server
+                                    using (var stream = new FileStream(FileFinalPath, FileMode.Create))
+                                    {
+                                        //await file.CopyToAsync(stream); // file is IFormFile
+                                        file.CopyTo(stream); // sync version
+                                    }
+                                    // Relative path for DB (use forward slashes)
+
+                                    string relativePath = string.Empty;
+                                    relativePath = $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{data["MEDIA_DATE"]}/{FileName}";
+
+                                    string vQryUpdateStatus = $"UPDATE MEDIA_ALBUM_CATEGORY SET IMAGE='" + FileName + "' ,IMAGE_PATH='" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MEDIA_ALBUM_ID='" + outObj.RetID + "' ";
+                                    _core.ExecNonQuery(vQryUpdateStatus);
+
+
+                                }
+                            }
+                        }
+                    }
+                    if (data["FLAG"]?.ToString() == "DELETE")
+                    {
+                        
+                        // Base folder
+                        string baseFolderPath = _settings.BasePath;
+
+                        // Build full file path
+                        string fullFilePath = Path.Combine(baseFolderPath, pImagePath.Replace("/", "\\"));
+                        if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
+                        {
+                            System.IO.File.Delete(fullFilePath);
+                            // ✅ Step 2: Check parent folder
+                            string parentFolder = Path.GetDirectoryName(fullFilePath);
+                            if (!string.IsNullOrWhiteSpace(parentFolder) &&
+                                     Directory.Exists(parentFolder) &&
+                                    !Directory.EnumerateFileSystemEntries(parentFolder).Any())
+                            {
+                                Directory.Delete(parentFolder, true); // delete folder if empty
+                            }
+                        }
+                    }
+                }
+                return outObj;
+
+            }, nameof(CrudMediaCategoryDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudMediaAlbumDetails")]
+        public IActionResult CrudMediaAlbumDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                 string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+                );
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                string pImagePath = string.Empty;
+
+                if (data["FLAG"]?.ToString() == "SAVE" || data["FLAG"]?.ToString() == "UPDATE")
+                {
+                    if (!(files != null && files.Count > 0))
+                    {
+                        outObj.StatusCode = 500;
+                        outObj.Message = "Media Album file is required.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+                    if (files != null && files.Count > 0)
+                    {
+                        // ✅ Max 5 files
+                        if (files.Count > 100)
+                        {
+                            outObj.StatusCode = 500;
+                            outObj.Message = "You can upload a maximum of 100 files.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+                        string[] allowedExt = new[] { ".jpg", ".jpeg", ".JPEG", ".png", ".pdf" };
+
+                        foreach (var file in files)
+                        {
+                            string FileName = string.Empty;
+                            string FilePath = string.Empty;
+                            string ext = string.Empty;
+                            if (file.Length > 0)
+                            {
+                                ext = Path.GetExtension(file.FileName).ToLower();
+                                if (!allowedExt.Contains(ext))
+                                {
+                                    outObj.StatusCode = 500;
+                                    outObj.Message = "Only JPG, PNG, and PDF files are allowed.";
+                                    outObj.LoginStatus = pJWT_LOGIN_NAME;
+                                    return outObj;
+                                }
+
+                            }
+                            // Step 2: Build SQL parameters (advanced dynamic approach)
+                            var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                                data: data,
+                                keys: filterKeys,
+                                mpSeatId: pJWT_MP_SEAT_ID,
+                                userId: pJWT_USERID,
+                                includeRetId: true
+                            );
+                            DataTable dt = _core.ExecProcDt("ReactCrudMediaAlbumDetails", paramList.ToArray());
+                            SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                            if (outObj.StatusCode == 200)
+                            {
+                                try
+                                {
+                                    // 🔹 Get MEDIA_DATE (old date if update)
+                                    string pMedia_Date = Convert.ToString(_core.ExecScalarText(
+                                        @"SELECT TOP 1 FORMAT(MEDIA_DATE,'dd-MM-yyyy') 
+                                        FROM MEDIA_ALBUM_CATEGORY  
+                                        WHERE MP_SEAT_ID=@MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID",
+                                        new[] {
+                                         new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                                         new SqlParameter("@MEDIA_ALBUM_ID", data["MEDIA_ALBUM_ID"]?.ToString())
+                                        }
+                                    ));
+
+                                    if (data["FLAG"]?.ToString() == "UPDATE")
+                                    {
+                                        string pQry = @"SELECT TOP 1 IMAGE_PATH FROM MEDIA_ALBUM_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID AND MEDIA_ALBUM_DET_ID=@MEDIA_ALBUM_DET_ID";
+                                        // Get old MEDIA_DATE from DB (before update)
+                                        pImagePath = Convert.ToString(
+                                             _core.ExecScalarText(
+                                                  pQry,
+                                                   new[] {
+                                                   new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID) ,
+                                                   new SqlParameter("@MEDIA_ALBUM_ID",data["MEDIA_ALBUM_ID"]?.ToString()),
+                                                   new SqlParameter("@MEDIA_ALBUM_DET_ID",data["MEDIA_ALBUM_DET_ID"]?.ToString())
+
+                                                   }
+                                              )
+                                           );
+
+
+                                        string baseFolderPath = _settings.BasePath;
+                                        // Build full file path
+                                        string fullFilePath = Path.Combine(baseFolderPath, pImagePath.Replace("/", "\\"));
+                                        if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
+                                        {
+                                            System.IO.File.Delete(fullFilePath);
+                                           
+                                        }
+
+                                    }
+
+                                    var storageRoot = _settings.BasePath;
+                                    string baseFolder = string.Empty;
+                                    baseFolder = $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{pMedia_Date}";
+                                    string finalFolder = Path.Combine(storageRoot, baseFolder);
+                                    if (!Directory.Exists(finalFolder))
+                                    {
+                                        Directory.CreateDirectory(finalFolder);
+                                    }
+                                    if (!Directory.Exists(finalFolder))
+                                    {
+                                        Directory.CreateDirectory(finalFolder);
+                                    }
+
+                                    FileName = Path.GetFileName(file.FileName).Replace(" ", "_").Replace("(", "_").Replace(")", "").Replace("'", "");
+                                    FilePath = Path.Combine(baseFolder, FileName);
+                                    string FileFinalPath = Path.Combine(finalFolder, FileName);
+
+                                    // ✅ If file already exists, delete it before saving
+                                    if (System.IO.File.Exists(FileFinalPath))
+                                    {
+                                        System.IO.File.Delete(FileFinalPath);
+                                    }
+
+                                    // ✅ Save the uploaded file to server
+                                    using (var stream = new FileStream(FileFinalPath, FileMode.Create))
+                                    {
+                                        //await file.CopyToAsync(stream); // file is IFormFile
+                                        file.CopyTo(stream); // sync version
+                                    }
+                                    // Relative path for DB (use forward slashes)
+
+                                    string relativePath = $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{pMedia_Date}/{FileName}";
+
+                                    string vQryUpdateStatus = $"UPDATE MEDIA_ALBUM_DETAILS SET IMAGE=N'" + FileName + "' ,IMAGE_PATH=N'" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MEDIA_ALBUM_DET_ID='" + outObj.RetID + "' ";
+                                    _core.ExecNonQuery(vQryUpdateStatus);
+                                }
+                                catch(Exception Ex)
+                                {
+                                    string delQry = $"DELETE FROM MEDIA_ALBUM_DETAILS WHERE MP_SEAT_ID={pJWT_MP_SEAT_ID} AND MEDIA_ALBUM_DET_ID='" + outObj.RetID + "' ";
+                                    _core.ExecNonQuery(delQry);
+                                    outObj.StatusCode = 500;
+                                    outObj.Message = "File upload failed. Record has been removed.";
+                                    outObj.LoginStatus = pJWT_LOGIN_NAME;
+                                }
+
+
+                            }
+
+                        }
+
+
+                    }
+                }
+                if (data["FLAG"]?.ToString() == "DELETE" || data["FLAG"]?.ToString() == "UPDATE_DESCRIPTION")
+                {
+                    // Step 2: Build SQL parameters (advanced dynamic approach)
+                    var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                        data: data,
+                        keys: filterKeys,
+                        mpSeatId: pJWT_MP_SEAT_ID,
+                        userId: pJWT_USERID,
+                        includeRetId: true
+                    );
+                    DataTable dt = _core.ExecProcDt("ReactCrudMediaAlbumDetails", paramList.ToArray());
+                    SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                    if (outObj.StatusCode == 200)
+                    {
+                        if (data["FLAG"]?.ToString() == "DELETE")
+                        {
+                            string pQry = @"SELECT TOP 1 IMAGE_PATH FROM MEDIA_ALBUM_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID AND MEDIA_ALBUM_DET_ID=@MEDIA_ALBUM_DET_ID";
+                            pImagePath = Convert.ToString(
+                                      _core.ExecScalarText(
+                                           pQry,
+                                            new[] {
+                                            new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID) ,
+                                            new SqlParameter("@MEDIA_ALBUM_ID",data["MEDIA_ALBUM_ID"]?.ToString()),
+                                            new SqlParameter("@MEDIA_ALBUM_DET_ID",data["MEDIA_ALBUM_DET_ID"]?.ToString())
+
+                                            }
+                                       )
+                                   );
+
+
+                            string baseFolderPath = _settings.BasePath;
+                            // Build full file path
+                            string fullFilePath = Path.Combine(baseFolderPath, pImagePath.Replace("/", "\\"));
+                            if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
+                            {
+                                System.IO.File.Delete(fullFilePath);
+
+                                string parentFolder = Path.GetDirectoryName(fullFilePath);
+                                if (!string.IsNullOrWhiteSpace(parentFolder) &&
+                                         Directory.Exists(parentFolder) &&
+                                        !Directory.EnumerateFileSystemEntries(parentFolder).Any())
+                                {
+                                    Directory.Delete(parentFolder, true); // delete folder if empty
+                                }
+
+                            }
+                        }
+                    }
+                }
+
+                return outObj;
+                
+            }, nameof(CrudMediaAlbumDetails), out _, skipTokenCheck: false));
+        }
+
+
+        [HttpPost("DownloadImagesAsPdf")]
+        public IActionResult DownloadImagesAsPdf([FromBody] object input)
+        {
+            var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+            var data = ApiHelper.ToObjectDictionary(rawData);
+            var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+            var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                data: data,
+                keys: filterKeys,
+                mpSeatId: pJWT_MP_SEAT_ID,
+                includeTotalCount: false,
+                includeWhere: false
+            );
+
+            DataTable dtImages = _core.ExecProcDt("ReactImagesAsPdf", paramList.ToArray());
+
+            if (dtImages.Rows.Count == 0)
+                return NotFound("No images found.");
+
+            string pID = data["ID"].ToString();
+            byte[] pdfBytes;
+
+            using (var ms = new MemoryStream())
+            using (var doc = new iTextSharp.text.Document())
+            {
+                iTextSharp.text.pdf.PdfWriter.GetInstance(doc, ms);
+                doc.Open();
+
+                foreach (DataRow row in dtImages.Rows)
+                {
+                    string imagePath = row["IMAGE_PATH"].ToString();
+                    string heading = row["IMAGE_TITLE"].ToString();
+                    string fullPath = Path.Combine(_settings.BasePath, imagePath.Replace("/", "\\"));
+
+                    if (System.IO.File.Exists(fullPath))
+                    {
+                        var font = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 14, BaseColor.Black);
+                        doc.Add(new Paragraph(heading, font));
+                        doc.Add(new Paragraph("\n"));
+
+                        var image = iTextSharp.text.Image.GetInstance(fullPath);
+                        image.ScaleToFit(doc.PageSize.Width - 40, doc.PageSize.Height - 40);
+                        image.Alignment = iTextSharp.text.Image.ALIGN_CENTER;
+                        doc.Add(image);
+
+                        doc.NewPage();
+                    }
+                }
+                doc.Close();
+                pdfBytes = ms.ToArray();
+            }
+
+            return File(pdfBytes, "application/pdf", $"MediaAlbum_{pID}.pdf");
+        }
+
+        [HttpPost("GetAllNameMobnoDetails")]
+        public IActionResult GetAllNameMobnoDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: false,
+                    includeWhere: false
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactAllNameMobno", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+
+            }, nameof(GetAllNameMobnoDetails), out _, skipTokenCheck: false));
         }
 
 
