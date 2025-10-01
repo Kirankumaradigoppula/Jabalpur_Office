@@ -195,6 +195,52 @@ namespace Jabalpur_Office.ServiceCore
             }
         }
 
+        public DataTable ExecProc(string procName)
+        {
+            try
+            {
+                using var conn = new SqlConnection(_connectionString);
+                using var cmd = new SqlCommand(procName, conn)
+                {
+                    CommandType = CommandType.StoredProcedure,
+                    CommandTimeout = 120 // Optional: customize timeout
+                };
+
+                var dt = new DataTable();
+                using var adapter = new SqlDataAdapter(cmd);
+                adapter.Fill(dt);
+                return dt;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error executing procedure '{procName}'", ex);
+            }
+        }
+
+        public DataTable ExecDtText(string query, SqlParameter[] parameters = null)
+        {
+            try
+            {
+                using var conn = new SqlConnection(_connectionString);
+                using var cmd = new SqlCommand(query, conn)
+                {
+                    CommandType = CommandType.Text,
+                    CommandTimeout = 120
+                };
+
+                if (parameters != null)
+                    cmd.Parameters.AddRange(parameters);
+
+                var dt = new DataTable();
+                using var adapter = new SqlDataAdapter(cmd);
+                adapter.Fill(dt);
+                return dt;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error executing query '{query}'", ex);
+            }
+        }
 
 
     }
