@@ -25,6 +25,8 @@ using System.Linq;
 using iTextSharp.text;
 using iTextSharp.text.pdf;
 using System.Drawing;
+using System.Net.Http;
+using Newtonsoft.Json.Linq;
 
 namespace Jabalpur_Office.Controllers
 {
@@ -2388,6 +2390,134 @@ namespace Jabalpur_Office.Controllers
                 return outObj;
 
             }, nameof(GetAllNameMobnoDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("SendSMSService")]
+
+        public async Task<WrapperListData> SendSMSService([FromBody] object input)
+        {
+
+            var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+            var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+            var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+            // Step 2: Build SQL parameters (advanced dynamic approach)
+            var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                data: data,
+                keys: filterKeys,
+                mpSeatId: pJWT_MP_SEAT_ID,
+                includeTotalCount: false,
+                includeWhere: false
+            );
+
+            DataTable dt = _core.ExecProcDt("ReactSMSServiceDetails", paramList.ToArray());
+            ApiHelper.SetDataTableListOutput(dt, outObj);
+            SetOutput(pStatus, pMsg, outObj);
+            if (outObj.StatusCode == 200 && dt != null && dt.Rows.Count > 0)
+            {
+                // don’t populate DataList, just use dt for config
+                outObj.DataList = null;
+                string smsApiUrl = dt.Rows[0]["SMS_API"].ToString();
+                string smsBalApiUrl = dt.Rows[0]["SMS_BALANCE_API"].ToString();
+
+                if (!string.IsNullOrEmpty(smsApiUrl) && data.ContainsKey("MOBNO_LIST"))
+                {
+
+                    // 🔹 Step 1: Get balance ONCE
+                    string balanceValue = "";
+                    try
+                    {
+                        using var client = new HttpClient();
+                        string jsonString = await client.GetStringAsync(smsBalApiUrl);
+                        JObject jsonObject = JObject.Parse(jsonString);
+                        balanceValue = (string)jsonObject["balance"];
+                    }
+                    catch (Exception ex)
+                    {
+                        balanceValue = "ERROR: " + ex.Message;
+                    }
+
+                    // 🔹 Step 2: Prepare numbers
+                    string mobNoList = data["MOBNO_LIST"]?.ToString() ?? string.Empty;
+                    // Split by comma, trim whitespace
+                    List<string> mobileNumbers = mobNoList.Split(',')
+                          .Select(x => x.Trim())
+                          .Where(x => !string.IsNullOrWhiteSpace(x))
+                          .ToList();
+
+                    int successCount = 0;
+                    int failureCount = 0;
+                    using var httpClient = new HttpClient();
+
+                    // 🔹 Step 3: Send SMS in parallel
+                    var tasks = mobileNumbers.Select(async mob =>
+                    {
+                        string finalUrl = smsApiUrl.Replace("{0}", Uri.EscapeDataString(mob));
+                       
+                        try
+                        {
+                            HttpResponseMessage response = await httpClient.GetAsync(finalUrl);
+                            if (response.IsSuccessStatusCode)
+                            {
+                                string responseContent = await response.Content.ReadAsStringAsync();
+                                Interlocked.Increment(ref successCount);
+                                Console.WriteLine($"✅ SMS sent to {mob}. API Response: {responseContent}");
+                            }
+                            else
+                            {
+                                Interlocked.Increment(ref failureCount);
+                                Console.WriteLine($"❌ Failed for {mob}. StatusCode: {response.StatusCode}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Interlocked.Increment(ref failureCount);
+                            Console.WriteLine($"⚠️ Error while sending SMS to {mob}: {ex.Message}");
+                        }
+                    });
+                    await Task.WhenAll(tasks);
+                    // 📊 Aggregate result
+                    int totalNumbers = mobileNumbers.Count;
+
+                    outObj.ExtraData["SMS_SERVICE_DETAILS"] = new
+                    {
+                        TotalNumbers = totalNumbers,
+                        TotalSent = successCount,
+                        TotalFailed = failureCount
+
+                    };
+                    // 📝 Log into DB
+                    string flag = data.ContainsKey("FLAG") ? data["FLAG"]?.ToString() ?? "" : "";
+                    string MAS_ID = null;
+                    if (data.ContainsKey("MAS_ID") && !string.IsNullOrWhiteSpace(data["MAS_ID"]?.ToString()))
+                    {
+                        MAS_ID = data["MAS_ID"].ToString();
+                    }
+                    string vQryStatus = $@"
+                    INSERT INTO DAILY_SMS_LOG_MASTER 
+                    (MP_SEAT_ID, DAILY_SMS_TYPE, DAILY_SMS_TOTAL_COUNT,DAILY_SMS_MOBILE_NO_LIST,SMS_BALANCE,OTHER_TABLE_MAS_ID) 
+                    VALUES ('{pJWT_MP_SEAT_ID}', '{flag}', {totalNumbers},'{mobNoList}','{balanceValue}','{MAS_ID}')";
+                    _core.ExecNonQuery(vQryStatus);
+
+                    if (flag == "APPOINTMENT")
+                    {
+                        string vQryUpdateStatus = $@"
+                             UPDATE MP_APPOINTMENT 
+                             SET SMS_STATUS='Y'  
+                             WHERE MP_SEAT_ID='{pJWT_MP_SEAT_ID}' 
+                             AND APPOINTMENT_STATUS='ACCEPTED' 
+                             AND SMS_STATUS IS NULL
+                             AND (MOBNO IN ({string.Join(",", mobileNumbers.Select(m => $"'{m}'"))})
+                                  OR ALTR_MOBNO IN ({string.Join(",", mobileNumbers.Select(m => $"'{m}'"))}))";
+                        _core.ExecNonQuery(vQryUpdateStatus);
+                      
+                    }
+
+                }
+            }
+            return outObj;
+
+           
         }
 
 
