@@ -18,6 +18,9 @@ namespace Jabalpur_Office.ServiceCore
 
         object ExecScalarText(string procName, SqlParameter[] parameters);
 
+        DataTable ExecProc(string procName);
+        DataTable ExecDtText(string procName, SqlParameter[] parameters=null);
+
 
     }
 }
