@@ -2520,6 +2520,152 @@ namespace Jabalpur_Office.Controllers
            
         }
 
+        [HttpPost("GetBirthdayDetails")]
+        public IActionResult GetBirthdayDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactBirthdayDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetBirthdayDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("GetAnniversaryDetails")]
+        public IActionResult GetAnniversaryDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactAnniversaryDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetAnniversaryDetails), out _, skipTokenCheck: false));
+        }
+
+        //Pending
+        [HttpPost("CrudAnniversaryBirthdayDetails")]
+        public IActionResult CrudAnniversaryBirthdayDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                         string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+                );
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                string pImagePath = string.Empty;
+                return outObj;
+            }, nameof(GetAnniversaryDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("GetSwechchmadMasterDetails")]
+        public IActionResult GetSwechchmadMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                var pTotalAmount = new SqlParameter("@pTotalAmount", SqlDbType.Decimal)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(pTotalAmount);
+                var pTotalAspectAmount = new SqlParameter("@pTotalAspectAmount", SqlDbType.Decimal)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(pTotalAspectAmount);
+                DataTable dt = _core.ExecProcDt("ReactSwechchmadMasterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                if (outObj.StatusCode ==200)
+                {
+                    ApiHelper.AddDecimalExtra(outObj, pTotalAmount, "TotalAmount");
+                    ApiHelper.AddDecimalExtra(outObj, pTotalAspectAmount, "TotalAspectAmount");
+                }
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetSwechchmadMasterDetails), out _, skipTokenCheck: false));
+        }
 
     }
 }
