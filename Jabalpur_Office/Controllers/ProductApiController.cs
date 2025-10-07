@@ -3632,5 +3632,69 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetNewsFeedDetails), out _, skipTokenCheck: false));
         }
 
+        [HttpPost("CrudConstituencyDesignationMasterDetails")]
+        public IActionResult CrudConstituencyDesignationMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudConstituencyDesignationMasterDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudConstituencyDesignationMasterDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetConstituencyDesignationDetails")]
+        public IActionResult GetConstituencyDesignationDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactConstituencyDesignationDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+            }, nameof(GetConstituencyDesignationDetails), out _, skipTokenCheck: false));
+        }
+
     }
 }
