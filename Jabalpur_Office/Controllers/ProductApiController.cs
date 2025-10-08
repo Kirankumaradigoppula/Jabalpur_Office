@@ -27,6 +27,7 @@ using iTextSharp.text.pdf;
 using System.Drawing;
 using System.Net.Http;
 using Newtonsoft.Json.Linq;
+using static System.Net.WebRequestMethods;
 
 namespace Jabalpur_Office.Controllers
 {
@@ -3694,6 +3695,237 @@ namespace Jabalpur_Office.Controllers
 
                 return outObj;
             }, nameof(GetConstituencyDesignationDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudConstituencyInchargeDetails")]
+        public IActionResult CrudConstituencyInchargeDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudConstituencyInchargeDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudConstituencyInchargeDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetAllConstituencyWiseMasDetails")]
+        public IActionResult GetAllConstituencyWiseMasDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, _, _) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactAllConstituencyWiseMasDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                return outObj;
+            }, nameof(GetAllConstituencyWiseMasDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudMpProgrammeDetails")]
+        public IActionResult CrudMpProgrammeDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                   string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+                );
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                string ext = string.Empty;
+                string flag = data.ContainsKey("FLAG") ? data["FLAG"]?.ToString() ?? "" : "";
+                // ---------------------- FILE VALIDATION (SAVE / UPDATE) ----------------------
+                if (files != null && (flag == "SAVE" || flag == "UPDATE"))
+                {
+                    if (files.Count > 1)
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = "Only one file can be uploaded.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+
+                    var file = files.First();
+                    string[] allowedExt = new[] { ".jpg", ".png", ".JPG", ".PNG", ".mp4", ".MP4", ".jpeg", ".JPEG" };
+                    ext = Path.GetExtension(file.FileName).ToLower();
+                    if (!allowedExt.Contains(ext))
+                    {
+                        outObj.StatusCode = 500;
+                        outObj.Message = "Only JPG, PNG, and MP4 files are allowed.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+
+                    double fileSizeInMB = file.Length / 1024.0 / 1024.0;
+                    // ✅ Example: limit to 5 MB max
+                    if (fileSizeInMB > 100)
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = "File size exceeds the 100 MB limit.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+                }
+               
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudMpProgrammeDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                // ---------------------- ON SUCCESS ----------------------
+                if (outObj.StatusCode == 200)
+                {
+                    string baseFolderPath = _settings.BasePath;
+                    if (files != null && (flag == "SAVE" || flag == "UPDATE"))
+                    {
+                        var file = files.First();
+                        string storageRoot = _settings.BasePath;
+                        string baseFolder = Path.Combine("image", $"MP_{pJWT_MP_SEAT_ID}", "MpAttachedFiles");
+                        string finalFolder = Path.Combine(storageRoot, baseFolder);
+                        if (!Directory.Exists(finalFolder))
+                        {
+                            Directory.CreateDirectory(finalFolder);
+                        }
+                        string fileName = $"MPPROG_{outObj.RetID}{ext}";
+                        string relativePath = Path.Combine(baseFolder, fileName).Replace("\\", "/");
+                        string fullPath = Path.Combine(finalFolder, fileName);
+                        // ✅ If file already exists, delete it before saving
+                        if (System.IO.File.Exists(fullPath))
+                        {
+                            System.IO.File.Delete(fullPath);
+                        }
+                        using (var stream = new FileStream(fullPath, FileMode.Create))
+                        {
+                            file.CopyTo(stream);
+                        }
+
+                        string updateQry = $"UPDATE MP_PROGRAMME SET PROG_DOCUMENT = '" + fileName + "', FILE_PATH = '" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MP_PROG_ID='" + outObj.RetID + "' ";
+                        _core.ExecNonQuery(updateQry);
+                        
+                    }
+                    if (flag == "DELETE")
+                    {
+                        string deleteIds = data.ContainsKey("MP_PROG_ID")
+                         ? data["MP_PROG_ID"]?.ToString() ?? outObj.RetID.ToString()
+                    :    outObj.RetID.ToString();
+
+                        if (string.IsNullOrEmpty(deleteIds))
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "No IDs provided for deletion.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+                        // 1️⃣ Get files from MP_PROGRAMME
+
+                        string pQry = $@"
+                            SELECT FILE_PATH FROM MP_PROGRAMME 
+                            WHERE MP_SEAT_ID = @MP_SEAT_ID AND MP_PROG_ID IN ({deleteIds})"; ;
+                        // Get old MEDIA_DATE from DB (before update)
+                           DataTable dtProgramme = _core.ExecDtText(pQry,
+                            new[]
+                             {
+                                  new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                             }
+                         );
+
+                        // 2️⃣ Get files from DOC_MAS
+                        string qDoc = $@"
+                          SELECT DOC_PATH FROM DOC_MAS  
+                          WHERE MP_SEAT_ID = @MP_SEAT_ID 
+                            AND REFERENCE_ID IN ({deleteIds}) 
+                            AND MODULE_NM = 'EVENT'";
+                          
+                        DataTable dtDocs = _core.ExecDtText(qDoc,
+                            new[]
+                             {
+                                  new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                             }
+                        );
+
+                        // Combine both sets
+                        var allPaths = dtProgramme.AsEnumerable()
+                            .Select(r => r["FILE_PATH"]?.ToString())
+                            .Concat(dtDocs.AsEnumerable().Select(r => r["DOC_PATH"]?.ToString()))
+                            .Where(p => !string.IsNullOrWhiteSpace(p))
+                            .Distinct()
+                            .ToList();
+
+                        string fullFilePath = string.Empty;
+                        // 3️⃣ Delete all found files
+
+                        foreach (var pPath in allPaths)
+                        {
+                             fullFilePath = Path.Combine(baseFolderPath, pPath.Replace("/", "\\"));
+                            try
+                            {
+                                if (System.IO.File.Exists(fullFilePath))
+                                {
+                                    System.IO.File.Delete(fullFilePath);
+                                    string parentFolder = Path.GetDirectoryName(fullFilePath);
+
+                                    if (!string.IsNullOrEmpty(parentFolder) &&
+                                        Directory.Exists(parentFolder) &&
+                                        !Directory.EnumerateFileSystemEntries(parentFolder).Any())
+                                    {
+                                        Directory.Delete(parentFolder, true);
+                                    }
+                                }
+                            }
+                            catch(Exception Ex)
+                            {
+                                outObj.StatusCode = 400;
+                                outObj.Message = $"Failed to delete file: {fullFilePath}, Error: {Ex.Message}";
+                                outObj.LoginStatus = pJWT_LOGIN_NAME;
+                                return outObj;
+                            }
+                        }
+
+                    }
+
+                }
+
+                return outObj;
+            }, nameof(CrudMpProgrammeDetails), out _, skipTokenCheck: false));
         }
 
     }
