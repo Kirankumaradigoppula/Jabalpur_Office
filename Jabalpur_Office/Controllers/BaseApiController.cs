@@ -376,7 +376,6 @@ namespace Jabalpur_Office.Controllers
             //);
         }
 
-        
 
         protected void LogError(Exception ex, string location)
         {
