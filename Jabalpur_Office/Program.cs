@@ -5,20 +5,32 @@ using Jabalpur_Office.ServiceCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using Jabalpur_Office.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-
+// -------------------- Services --------------------
 builder.Services.AddControllers();
+
+
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+
+// Swagger with JWT and XML comments
 builder.Services.AddEndpointsApiExplorer();
 //builder.Services.AddSwaggerGen();
 
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new() { Title = "Jabalpur API", Version = "v1" });
+    c.SwaggerDoc("v1", new() { Title = "Jabalpur API", Version = "v1", Description = "Production API for Jabalpur Office" });
+
+    // XML comments
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+        c.IncludeXmlComments(xmlPath);
 
     // ✅ Add JWT Authentication to Swagger
     c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
@@ -49,6 +61,7 @@ builder.Services.Configure<StorageSettings>(
     builder.Configuration.GetSection("StorageSettings"));
 
 // ✅ Add this: Register DbContext with connection string --Kiran
+// DbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
@@ -56,12 +69,29 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 //Enable CORS Kiran 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .WithExposedHeaders("Content-Disposition")); // 👈 Needed for file downloads
-              
+    //options.AddPolicy("AllowAll", policy =>
+    //    policy.AllowAnyOrigin()
+    //          .AllowAnyMethod()
+    //          .AllowAnyHeader()
+    //          .SetIsOriginAllowed(_ => true)
+    //          .WithExposedHeaders("Content-Disposition")); // 👈 Needed for file downloads
+
+    options.AddPolicy("AllowSpecificOrigins", policy =>
+    {
+        policy.WithOrigins(
+          "https://digitechkonnect.com",
+          "https://www.digitechkonnect.com",
+          "https://digitechkonnect.com/TestJabalpur",
+          "https://digitechkonnect.com/Jabalpur",
+          "http://localhost:7056"
+      )
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials()
+        .SetIsOriginAllowed(_ => true)
+         .WithExposedHeaders("Content-Disposition"); // 👈 Needed for file downloads
+    });
+
 });
 
 //Dependency Injection
@@ -91,7 +121,7 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
-
+// -------------------- App --------------------
 var app = builder.Build();
 
 
@@ -99,7 +129,7 @@ var app = builder.Build();
 
 
 // ✅ Set base path for virtual directory (IIS: /Jabalapur)
-app.UsePathBase("/Jabalpur");
+//app.UsePathBase("/TestJabalpur");
 
 
 
@@ -175,7 +205,7 @@ app.Use(async (context, next) =>
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
-    c.SwaggerEndpoint("/Jabalpur/swagger/v1/swagger.json", "Jabalpur API v1");
+    c.SwaggerEndpoint("v1/swagger.json", "Jabalpur API v1");
     c.RoutePrefix = "swagger"; // Makes Swagger UI available at /Jabalapur/swagger
 });
 
