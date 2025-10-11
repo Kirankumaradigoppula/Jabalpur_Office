@@ -3020,11 +3020,11 @@ namespace Jabalpur_Office.Controllers
                     keys: filterKeys,
                     mpSeatId: pJWT_MP_SEAT_ID,
                     userId: pJWT_USERID,
-                    includeRetId: false
+                    includeRetId: true
                 );
 
                 DataTable dt = _core.ExecProcDt("ReactCrudSwechchmadMasterDetails", paramList.ToArray());
-                SetOutput(pStatus, pMsg,  outObj);
+                SetOutputParamsWithRetId(pStatus, pMsg,  outObj);
                 return outObj;
             }, nameof(CrudSwechchmadMasterDetails), out _, skipTokenCheck: false));
         }
