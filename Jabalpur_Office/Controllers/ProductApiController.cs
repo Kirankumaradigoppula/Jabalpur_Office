@@ -30,6 +30,7 @@ using Newtonsoft.Json.Linq;
 using static System.Net.WebRequestMethods;
 using Org.BouncyCastle.Ocsp;
 using Microsoft.AspNetCore.Rewrite;
+using Org.BouncyCastle.Asn1.Cmp;
 
 namespace Jabalpur_Office.Controllers
 {
@@ -2369,6 +2370,382 @@ namespace Jabalpur_Office.Controllers
             return File(pdfBytes, "application/pdf", $"MediaAlbum_{pID}.pdf");
         }
 
+
+        [HttpPost("GetAlbumCategoryDetails")]
+        public IActionResult GetAlbumCategoryDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactAlbumCategoryDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetAlbumCategoryDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudAlbumCategoryDetails")]
+        public IActionResult CrudAlbumCategoryDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                  string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+                );
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                string pImagePath = string.Empty;
+                string flag = data.ContainsKey("FLAG") ? data["FLAG"]?.ToString() ?? "" : "";
+                if (flag =="SAVE")
+                {
+                    if (!(files != null && files.Count > 0))
+                    {
+                        outObj.StatusCode = 500;
+                        outObj.Message = "Album Cover file is required.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+                    if (files.Count > 1)
+                    {
+                        outObj.StatusCode = 500;
+                        outObj.Message = "You can upload a maximum of One files.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+                    var file = files.First();
+                    string[] allowedExt = new[] { ".jpg", ".jpeg", ".png" };
+                    string ext = Path.GetExtension(file.FileName)?.ToLower() ?? "";
+                    // Validate file extension
+                    if (!allowedExt.Contains(ext))
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = $"Invalid file type ({ext}). Allowed: JPG, PNG";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+
+                    // Validate file size (max 2MB)
+                    double fileSizeInMB = file.Length / 1024.0 / 1024.0;
+                    if (fileSizeInMB > 2)
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+                }
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudAlbumCategoryDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                if (outObj.StatusCode == 200)
+                {
+                    if (flag == "SAVE" || flag == "UPDATE" && (files != null && files.Count > 0) )
+                    {
+                        if (files.Count > 1)
+                        {
+                            outObj.StatusCode = 500;
+                            outObj.Message = "You can upload a maximum of One files.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+                        var file = files.First();
+                        string[] allowedExt = new[] { ".jpg", ".jpeg", ".png" };
+                        string ext = Path.GetExtension(file.FileName)?.ToLower() ?? "";
+                        // Validate file extension
+                        if (!allowedExt.Contains(ext))
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = $"Invalid file type ({ext}). Allowed: JPG, PNG";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+
+                        // Validate file size (max 2MB)
+                        double fileSizeInMB = file.Length / 1024.0 / 1024.0;
+                        if (fileSizeInMB > 2)
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+                        // Prepare storage paths
+                        string storageRoot = _settings.BasePath;
+                        string baseFolder = Path.Combine("image", $"MP_{pJWT_MP_SEAT_ID}", "Albums");
+
+                        string finalFolder = Path.Combine(storageRoot, baseFolder);
+                        if (!Directory.Exists(finalFolder))
+                        {
+                            Directory.CreateDirectory(finalFolder);
+                        }
+
+                        string FileName = $"AlbumCover_{outObj.RetID}{ext}";
+                        string relativePath = Path.Combine(baseFolder, FileName).Replace("\\", "/");
+                        string fullPath = Path.Combine(finalFolder, FileName);
+                        // ✅ If file already exists, delete it before saving
+                        if (System.IO.File.Exists(fullPath))
+                        {
+                            System.IO.File.Delete(fullPath);
+                        }
+
+                        // ✅ Save the uploaded file to server
+                        using (var stream = new FileStream(fullPath, FileMode.Create))
+                        {
+                            //await file.CopyToAsync(stream); // file is IFormFile
+                            file.CopyTo(stream); // sync version
+                        }
+                        string vQryUpdateStatus = $"UPDATE ALBUM_CATEGORY SET IMAGE_NAME='" + FileName + "' ,IMAGE_PATH='" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND ALBUM_CAT_ID='" + outObj.RetID + "' ";
+                        _core.ExecNonQuery(vQryUpdateStatus);
+
+                    }
+                    if (flag == "DELETE")
+                    {
+                        // Base folder
+                        string baseFolderPath = _settings.BasePath;
+                        string pQry = @"SELECT  IMAGE_PATH FROM ALBUM_CATEGORY  WHERE MP_SEAT_ID = @MP_SEAT_ID AND ALBUM_CAT_ID=@ALBUM_CAT_ID";
+                        // Get old MEDIA_DATE from DB (before update)
+                        pImagePath = Convert.ToString(
+                             _core.ExecScalarText(
+                                  pQry,
+                                   new[] {
+                                    new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                                    new SqlParameter("@ALBUM_CAT_ID", data["ALBUM_CAT_ID"]?.ToString())
+
+                                   }
+                              )
+                           );
+
+                        if (!string.IsNullOrEmpty(pImagePath))
+                        {
+                            // Build full file path
+                            string fullFilePath = Path.Combine(baseFolderPath, pImagePath.Replace("/", "\\"));
+                            if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
+                            {
+                                System.IO.File.Delete(fullFilePath);
+                                // ✅ Step 2: Check parent folder
+                                string parentFolder = Path.GetDirectoryName(fullFilePath);
+                                if (!string.IsNullOrWhiteSpace(parentFolder) &&
+                                         Directory.Exists(parentFolder) &&
+                                        !Directory.EnumerateFileSystemEntries(parentFolder).Any())
+                                {
+                                    Directory.Delete(parentFolder, true); // delete folder if empty
+                                }
+                            }
+                        }
+
+                    }
+                }
+
+                return outObj;
+
+            }, nameof(CrudAlbumCategoryDetails), out _, skipTokenCheck: false));
+        }
+
+
+        [HttpPost("CrudAlbumDetails")]
+        public IActionResult CrudAlbumDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                 string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+                );
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                string pImagePath = string.Empty;
+                string flag = data.ContainsKey("FLAG") ? data["FLAG"]?.ToString() ?? "" : "";
+                if (flag == "SAVE" || flag == "UPDATE")
+                {
+                    if (!(files != null && files.Count > 0))
+                    {
+                        outObj.StatusCode = 500;
+                        outObj.Message = "Album file is required.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+                    if (files != null && files.Count > 0)
+                    {
+                        if (files.Count > 100)
+                        {
+                            outObj.StatusCode = 500;
+                            outObj.Message = "You can upload a maximum of 100 files.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+                        string[] allowedExt = new[] { ".jpg", ".jpeg", ".JPEG", ".png" };
+                        foreach (var file in files)
+                        {
+                            string FileName = string.Empty;
+                            string FilePath = string.Empty;
+                            string ext = string.Empty;
+                            if (file.Length > 0)
+                            {
+                                ext = Path.GetExtension(file.FileName).ToLower();
+                                if (!allowedExt.Contains(ext))
+                                {
+                                    outObj.StatusCode = 500;
+                                    outObj.Message = "Only JPG, PNG files are allowed.";
+                                    outObj.LoginStatus = pJWT_LOGIN_NAME;
+                                    return outObj;
+                                }
+
+                            }
+                            var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                               data: data,
+                               keys: filterKeys,
+                               mpSeatId: pJWT_MP_SEAT_ID,
+                               userId: pJWT_USERID,
+                               includeRetId: true
+                             );
+                            DataTable dt = _core.ExecProcDt("ReactCrudAlbumDetails", paramList.ToArray());
+                            SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                            if (outObj.StatusCode == 200)
+                            {
+                                try
+                                {
+                                    var storageRoot = _settings.BasePath;
+                                    string baseFolder = string.Empty;
+                                    baseFolder = $"image/MP_{pJWT_MP_SEAT_ID}/Albums";
+                                    string finalFolder = Path.Combine(storageRoot, baseFolder);
+                                    if (!Directory.Exists(finalFolder))
+                                    {
+                                        Directory.CreateDirectory(finalFolder);
+                                    }
+                                    if (!Directory.Exists(finalFolder))
+                                    {
+                                        Directory.CreateDirectory(finalFolder);
+                                    }
+
+                                    FileName = Path.GetFileName(file.FileName).Replace(" ", "_").Replace("(", "_").Replace(")", "").Replace("'", "");
+                                    FilePath = Path.Combine(baseFolder, FileName);
+                                    string FileFinalPath = Path.Combine(finalFolder, FileName);
+
+                                    // ✅ If file already exists, delete it before saving
+                                    if (System.IO.File.Exists(FileFinalPath))
+                                    {
+                                        System.IO.File.Delete(FileFinalPath);
+                                    }
+
+                                    // ✅ Save the uploaded file to server
+                                    using (var stream = new FileStream(FileFinalPath, FileMode.Create))
+                                    {
+                                        //await file.CopyToAsync(stream); // file is IFormFile
+                                        file.CopyTo(stream); // sync version
+                                    }
+                                    // Relative path for DB (use forward slashes)
+
+                                    string relativePath = $"image/MP_{pJWT_MP_SEAT_ID}/Albums/{FileName}";
+
+                                    string vQryUpdateStatus = $"UPDATE ALBUM_DETAILS SET IMAGE=N'" + FileName + "' ,IMAGE_PATH=N'" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND ALBUM_DET_ID='" + outObj.RetID + "' ";
+                                    _core.ExecNonQuery(vQryUpdateStatus);
+                                }
+                                catch(Exception Ex)
+                                {
+                                    string delQry = $"DELETE FROM ALBUM_DETAILS WHERE MP_SEAT_ID={pJWT_MP_SEAT_ID} AND ALBUM_DET_ID='" + outObj.RetID + "' ";
+                                    _core.ExecNonQuery(delQry);
+                                    outObj.StatusCode = 500;
+                                    outObj.Message = "File upload failed. Record has been removed.";
+                                    outObj.LoginStatus = pJWT_LOGIN_NAME;
+                                }
+                            }
+                            //
+                        }
+
+                    }
+                }
+                if (files == null && (flag =="UPDATE" || flag == "DELETE") )
+                {
+
+                    if (flag == "DELETE")
+                    {
+                        string pQry = @"SELECT TOP 1 IMAGE_PATH FROM ALBUM_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND ALBUM_CAT_ID=@ALBUM_CAT_ID AND ALBUM_DET_ID=@ALBUM_DET_ID";
+                        pImagePath = Convert.ToString(
+                                  _core.ExecScalarText(
+                                       pQry,
+                                        new[] {
+                                    new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID) ,
+                                    new SqlParameter("@ALBUM_CAT_ID",data["ALBUM_CAT_ID"]?.ToString()),
+                                    new SqlParameter("@ALBUM_DET_ID",data["ALBUM_DET_ID"]?.ToString())
+
+                                        }
+                                   )
+                               );
+
+                    }
+                    // Step 2: Build SQL parameters (advanced dynamic approach)
+                    var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                        data: data,
+                        keys: filterKeys,
+                        mpSeatId: pJWT_MP_SEAT_ID,
+                        userId: pJWT_USERID,
+                        includeRetId: true
+                    );
+                    DataTable dt = _core.ExecProcDt("ReactCrudAlbumDetails", paramList.ToArray());
+                    SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                    if (outObj.StatusCode == 200)
+                    {
+                        if (data["FLAG"]?.ToString() == "DELETE")
+                        {
+                            
+
+                            string baseFolderPath = _settings.BasePath;
+                            // Build full file path
+                            string fullFilePath = Path.Combine(baseFolderPath, pImagePath.Replace("/", "\\"));
+                            if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
+                            {
+                                System.IO.File.Delete(fullFilePath);
+
+                                string parentFolder = Path.GetDirectoryName(fullFilePath);
+                                if (!string.IsNullOrWhiteSpace(parentFolder) &&
+                                         Directory.Exists(parentFolder) &&
+                                        !Directory.EnumerateFileSystemEntries(parentFolder).Any())
+                                {
+                                    Directory.Delete(parentFolder, true); // delete folder if empty
+                                }
+
+                            }
+                        }
+                    }
+                }
+                return outObj;
+
+            }, nameof(CrudAlbumDetails), out _, skipTokenCheck: false));
+        }
+
         [HttpPost("GetAllNameMobnoDetails")]
         public IActionResult GetAllNameMobnoDetails([FromBody] object input)
         {
@@ -2473,7 +2850,7 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetAnniversaryDetails), out _, skipTokenCheck: false));
         }
 
-        //Pending
+        
         [HttpPost("CrudAnniversaryBirthdayDetails")]
         public IActionResult CrudAnniversaryBirthdayDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
@@ -2485,9 +2862,81 @@ namespace Jabalpur_Office.Controllers
                 );
                 var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
                 var filterKeys = ApiHelper.GetFilteredKeys(data);
-                string pImagePath = string.Empty;
+
+                string flag = data.ContainsKey("FLAG") ? data["FLAG"]?.ToString() ?? "" : "";
+                string pPROFILE_IMAGE = string.Empty;
+                if (files != null && (flag == "DOB_UPDATE" || flag == "DOA_UPDATE"))
+                {
+                    var file = files.First();
+                    string[] allowedExt = new[] { ".jpg", ".jpeg", ".png" };
+                    string ext = Path.GetExtension(file.FileName)?.ToLower() ?? "";
+                    
+                    // Validate file extension
+                    if (!allowedExt.Contains(ext))
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = $"Invalid file type ({ext}). Allowed: JPG, PNG";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+
+                    // Validate file size (max 2MB)
+                    double fileSizeInMB = file.Length / 1024.0 / 1024.0;
+                    if (fileSizeInMB > 2)
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+
+                    // Prepare storage paths
+                    string storageRoot = _settings.BasePath;
+                    string baseFolder = Path.Combine("image", $"MP_{pJWT_MP_SEAT_ID}", "BdayProfiles");
+                    string voterNoSafe = data["VOTERNO"]?.ToString().Replace("/", "_") ?? "Unknown";
+
+                    // Set profile image name based on flag
+                    pPROFILE_IMAGE = flag == "DOB_UPDATE"
+                        ? $"BirthdayProfile_{voterNoSafe}{ext}"
+                        : $"AnniversaryProfile_{voterNoSafe}{ext}";
+
+                    string finalFolder = Path.Combine(storageRoot, baseFolder);
+                    if (!Directory.Exists(finalFolder))
+                    {
+                        Directory.CreateDirectory(finalFolder);
+                    }
+
+                    string fullPath = Path.Combine(finalFolder, pPROFILE_IMAGE);
+                    string relativePath = Path.Combine(baseFolder, pPROFILE_IMAGE).Replace("\\", "/");
+
+                    // Delete existing file if present
+                    if (System.IO.File.Exists(fullPath))
+                    {
+                        System.IO.File.Delete(fullPath);
+                    }
+
+                    // Save the uploaded file
+                    using (var stream = new FileStream(fullPath, FileMode.Create))
+                    {
+                        file.CopyTo(stream);
+                    }
+
+                    data["PROFILE_IMAGE"] = pPROFILE_IMAGE;
+
+                }
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: false
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudAnniversaryBirthdayDetails", paramList.ToArray());
+                SetOutput(pStatus, pMsg,  outObj);
                 return outObj;
-            }, nameof(GetAnniversaryDetails), out _, skipTokenCheck: false));
+            }, nameof(CrudAnniversaryBirthdayDetails), out _, skipTokenCheck: false));
         }
 
         [HttpPost("GetSwechchmadMasterDetails")]
@@ -2571,11 +3020,11 @@ namespace Jabalpur_Office.Controllers
                     keys: filterKeys,
                     mpSeatId: pJWT_MP_SEAT_ID,
                     userId: pJWT_USERID,
-                    includeRetId: true
+                    includeRetId: false
                 );
 
                 DataTable dt = _core.ExecProcDt("ReactCrudSwechchmadMasterDetails", paramList.ToArray());
-                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                SetOutput(pStatus, pMsg,  outObj);
                 return outObj;
             }, nameof(CrudSwechchmadMasterDetails), out _, skipTokenCheck: false));
         }
@@ -3599,6 +4048,34 @@ namespace Jabalpur_Office.Controllers
 
         }
 
+        [HttpPost("CrudAssignBoothDetails")]
+        public IActionResult CrudAssignBoothDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: false
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudAssignBoothDetails", paramList.ToArray());
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+
+            }, nameof(CrudAssignBoothDetails), out _, skipTokenCheck: false));
+
+
+        }
+
         [HttpPost("GetAllConstituencyWiseMasDetails")]
         public IActionResult GetAllConstituencyWiseMasDetails([FromBody] object input)
         {
@@ -4219,6 +4696,146 @@ namespace Jabalpur_Office.Controllers
 
         }
 
+
+        [HttpPost("CrudContactBook")]
+        public IActionResult CrudContactBook([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudContactBook", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudContactBook), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetContacBookDetails")]
+        public IActionResult GetContacBookDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactContacBookDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+            }, nameof(GetContacBookDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("GetLetterTemplateDetails")]
+        public IActionResult GetLetterTemplateDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactLetterTemplateDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+            }, nameof(GetLetterTemplateDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("GetDispatchLetterDetails")]
+        public IActionResult GetDispatchLetterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactDispatchLetterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetDispatchLetterDetails), out _, skipTokenCheck: false));
+        }
 
         [HttpPost("SendSMSService")]
 
