@@ -1525,6 +1525,75 @@ namespace Jabalpur_Office.Controllers
 
         }
 
+        [HttpPost("GetUserLocationMasterDetails")]
+        public IActionResult GetUserLocationMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactUserLocationMasterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetUserLocationMasterDetails), out _, skipTokenCheck: false));
+
+
+        }
+
+        [HttpPost("CrudUserLocationMasterDetails")]
+        public IActionResult CrudUserLocationMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg,_) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: false
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudUserLocationMasterDetails", paramList.ToArray());
+                SetOutputParams(pStatus, pMsg,  outObj);
+                return outObj;
+
+            }, nameof(CrudUserLocationMasterDetails), out _, skipTokenCheck: false));
+
+        }
+
         [HttpPost("GetReasonMasterDetails")]
         public IActionResult GetReasonMasterDetails([FromBody] object input)
         {
@@ -3024,7 +3093,7 @@ namespace Jabalpur_Office.Controllers
                 );
 
                 DataTable dt = _core.ExecProcDt("ReactCrudSwechchmadMasterDetails", paramList.ToArray());
-                SetOutputParamsWithRetId(pStatus, pMsg,  outObj);
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId,  outObj);
                 return outObj;
             }, nameof(CrudSwechchmadMasterDetails), out _, skipTokenCheck: false));
         }
@@ -4076,6 +4145,34 @@ namespace Jabalpur_Office.Controllers
 
         }
 
+        [HttpPost("CrudConstituencyMasDetails")]
+        public IActionResult CrudConstituencyMasDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: false
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudConstituencyMasDetails", paramList.ToArray());
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+
+            }, nameof(CrudConstituencyMasDetails), out _, skipTokenCheck: false));
+
+
+        }
+
         [HttpPost("GetAllConstituencyWiseMasDetails")]
         public IActionResult GetAllConstituencyWiseMasDetails([FromBody] object input)
         {
@@ -4785,9 +4882,11 @@ namespace Jabalpur_Office.Controllers
                     pageSize: pageSize
                 );
 
+               
                 DataTable dt = _core.ExecProcDt("ReactLetterTemplateDetails", paramList.ToArray());
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
+
 
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
@@ -4797,6 +4896,223 @@ namespace Jabalpur_Office.Controllers
 
                 return outObj;
             }, nameof(GetLetterTemplateDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("GetVisitorOutwardDocumentDetails")]
+        public IActionResult GetVisitorOutwardDocumentDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                var OUTWARD_IS_DISABLE = new SqlParameter("@pOUTWARD_IS_DISABLE", SqlDbType.Bit)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(OUTWARD_IS_DISABLE);
+
+                DataTable dt = _core.ExecProcDt("ReactVisitorOutwardDocumentDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+
+                // Read @pTotalAmount output value safely
+                if (OUTWARD_IS_DISABLE.Value != DBNull.Value)
+                {
+                    outObj.ExtraData["OUTWARD_IS_DISABLE"] = Convert.ToBoolean(OUTWARD_IS_DISABLE.Value);
+                }
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+            }, nameof(GetVisitorOutwardDocumentDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudVisitorOutwardDocumentDetails")]
+        public IActionResult CrudVisitorOutwardDocumentDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                  string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+                 );
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                string pImagePath = string.Empty;
+                string flag = data.ContainsKey("FLAG") ? data["FLAG"]?.ToString() ?? "" : "";
+
+                if (flag == "SAVE")
+                {
+                    {
+                        outObj.StatusCode = 500;
+                        outObj.Message = "Outward file is required.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+                    if (files.Count > 1)
+                    {
+                        outObj.StatusCode = 500;
+                        outObj.Message = "You can upload a maximum of One files.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+                    var file = files.First();
+                    string[] allowedExt = new[] { ".jpg", ".jpeg", ".png",".pdf",".docx", ".mp4", ".mp3" };
+                    string ext = Path.GetExtension(file.FileName)?.ToLower() ?? "";
+                    // Validate file extension
+                    if (!allowedExt.Contains(ext))
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = $"Invalid file type ({ext}). Allowed: JPG, PNG,PDF,DOCX,MP4 AND MP3";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+
+                    // Validate file size (max 2MB)
+                    double fileSizeInMB = file.Length / 1024.0 / 1024.0;
+                    if (fileSizeInMB > 100)
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = $"File '{file.FileName}' exceeds 100 limit.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+                }
+                if (flag == "DELETE")
+                {
+                    string pQry = @"SELECT  VIS_OUTWARD_DOC_PATH FROM VISITOR_OUTWARD_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND VIS_OUT_MAS_ID=@VIS_OUT_MAS_ID";
+                    // Get old MEDIA_DATE from DB (before update)
+                    pImagePath = Convert.ToString(
+                         _core.ExecScalarText(
+                              pQry,
+                               new[] {
+                            new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                            new SqlParameter("@VIS_OUT_MAS_ID", data["VIS_OUT_MAS_ID"]?.ToString())
+
+                               }
+                          )
+                       );
+                }
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                   data: data,
+                   keys: filterKeys,
+                   mpSeatId: pJWT_MP_SEAT_ID,
+                   userId: pJWT_USERID,
+                   includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudVisitorOutwardDocumentDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                if (outObj.StatusCode == 200)
+                {
+                    if (flag == "SAVE" || flag == "UPDATE" && (files != null && files.Count > 0))
+                    {
+                        if (files.Count > 1)
+                        {
+                            outObj.StatusCode = 500;
+                            outObj.Message = "You can upload a maximum of One files.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+                        var file = files.First();
+                        string[] allowedExt = new[] { ".jpg", ".jpeg", ".png", ".pdf", ".docx", ".mp4", ".mp3" };
+                        string ext = Path.GetExtension(file.FileName)?.ToLower() ?? "";
+                        // Validate file extension
+                        if (!allowedExt.Contains(ext))
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = $"Invalid file type ({ext}). Allowed: JPG, PNG,PDF,DOCX,MP4 AND MP3";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+
+                        // Validate file size (max 2MB)
+                        double fileSizeInMB = file.Length / 1024.0 / 1024.0;
+                        if (fileSizeInMB > 100)
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = $"File '{file.FileName}' exceeds 100MB limit.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+                        // Prepare storage paths
+                        string storageRoot = _settings.BasePath;
+                        string baseFolder = Path.Combine("image", $"MP_{pJWT_MP_SEAT_ID}", "VIS_OUTWARD_DOCUMENT");
+
+                        string finalFolder = Path.Combine(storageRoot, baseFolder);
+                        if (!Directory.Exists(finalFolder))
+                        {
+                            Directory.CreateDirectory(finalFolder);
+                        }
+
+                        string FileName = $"OutWard_{outObj.RetID}{ext}";
+                        string relativePath = Path.Combine(baseFolder, FileName).Replace("\\", "/");
+                        string fullPath = Path.Combine(finalFolder, FileName);
+                        // ✅ If file already exists, delete it before saving
+                        if (System.IO.File.Exists(fullPath))
+                        {
+                            System.IO.File.Delete(fullPath);
+                        }
+
+                        // ✅ Save the uploaded file to server
+                        using (var stream = new FileStream(fullPath, FileMode.Create))
+                        {
+                            //await file.CopyToAsync(stream); // file is IFormFile
+                            file.CopyTo(stream); // sync version
+                        }
+                        string vQryUpdateStatus = $"UPDATE VISITOR_OUTWARD_DETAILS SET VIS_OUTWARD_DOC='" + FileName + "' ,VIS_OUTWARD_DOC_PATH='" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND VIS_OUT_MAS_ID='" + outObj.RetID + "' ";
+                        _core.ExecNonQuery(vQryUpdateStatus);
+                    }
+                    if (flag == "DELETE")
+                    {
+                        // Base folder
+                        string baseFolderPath = _settings.BasePath;
+                        if (!string.IsNullOrEmpty(pImagePath))
+                        {
+                            // Build full file path
+                            string fullFilePath = Path.Combine(baseFolderPath, pImagePath.Replace("/", "\\"));
+                            if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
+                            {
+                                System.IO.File.Delete(fullFilePath);
+                                // ✅ Step 2: Check parent folder
+                                string parentFolder = Path.GetDirectoryName(fullFilePath);
+                                if (!string.IsNullOrWhiteSpace(parentFolder) &&
+                                         Directory.Exists(parentFolder) &&
+                                        !Directory.EnumerateFileSystemEntries(parentFolder).Any())
+                                {
+                                    Directory.Delete(parentFolder, true); // delete folder if empty
+                                }
+                            }
+                        }
+
+                    }
+                }
+
+                return outObj;
+
+            }, nameof(CrudVisitorOutwardDocumentDetails), out _, skipTokenCheck: false));
         }
 
         [HttpPost("GetDispatchLetterDetails")]
@@ -4837,8 +5153,157 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetDispatchLetterDetails), out _, skipTokenCheck: false));
         }
 
-        [HttpPost("SendSMSService")]
 
+        [HttpPost("GetVisitorWorkStatusDetails")]
+        public IActionResult GetVisitorWorkStatusDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                var WORK_IS_DISABLE = new SqlParameter("@pWORK_IS_DISABLE", SqlDbType.Bit)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(WORK_IS_DISABLE);
+
+                DataTable dt = _core.ExecProcDt("ReactVisitorWorkStatusDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+
+                // Read @pTotalAmount output value safely
+                if (WORK_IS_DISABLE.Value != DBNull.Value)
+                {
+                    outObj.ExtraData["WORK_IS_DISABLE"] = Convert.ToBoolean(WORK_IS_DISABLE.Value);
+                }
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+            }, nameof(GetVisitorWorkStatusDetails), out _, skipTokenCheck: false));
+        }
+
+
+
+        [HttpPost("CrudVisitorWorkStatusDetails")]
+        public IActionResult CrudVisitorWorkStatusDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                   data: data,
+                   keys: filterKeys,
+                   mpSeatId: pJWT_MP_SEAT_ID,
+                   userId: pJWT_USERID,
+                   includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudVisitorWorkStatusDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+               
+
+                return outObj;
+
+            }, nameof(CrudVisitorWorkStatusDetails), out _, skipTokenCheck: false));
+        }
+
+
+        [HttpPost("GetDistrictMasDetails")]
+        public IActionResult GetDistrictMasDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+
+                DataTable dt = _core.ExecProcDt("ReactDistrictMasDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+            }, nameof(GetDistrictMasDetails), out _, skipTokenCheck: false));
+        }
+
+
+
+        [HttpPost("CrudDistrictMasDetails")]
+        public IActionResult CrudDistrictMasDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                   data: data,
+                   keys: filterKeys,
+                   mpSeatId: pJWT_MP_SEAT_ID,
+                   userId: pJWT_USERID,
+                   includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudDistrictMasDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+
+
+                return outObj;
+
+            }, nameof(CrudDistrictMasDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("SendSMSService")]
         public async Task<WrapperListData> SendSMSService([FromBody] object input)
         {
 
