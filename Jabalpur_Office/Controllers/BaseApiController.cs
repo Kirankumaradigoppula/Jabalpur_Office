@@ -87,6 +87,12 @@ namespace Jabalpur_Office.Controllers
             {
                 return func();
             }
+            catch (HttpRequestException ex)
+            {
+                LogError(ex, logContext + "_SQL");
+                baseOutObj.StatusCode = 503;
+                baseOutObj.Message = "Network error: " + GetSafeErrorMessage(ex);
+            }
             catch (SqlException ex)
             {
                 LogError(ex, logContext + "_SQL");
