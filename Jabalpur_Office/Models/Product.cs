@@ -60,6 +60,8 @@
     public class WrapperCrudObjectData : Product
     {
         public int RetID { get; set; }  // ← Add this line
+        // Generic container for API-specific extra info
+        public Dictionary<string, object> ExtraData { get; set; } = new();
     }
 
     
