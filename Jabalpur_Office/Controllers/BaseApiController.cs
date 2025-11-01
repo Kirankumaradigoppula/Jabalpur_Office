@@ -265,9 +265,115 @@ namespace Jabalpur_Office.Controllers
             }
         }
 
-        //Crud Operation
+        //Zip File
+       /* protected IActionResult ExecuteWithHandlingFile(
+           Func<(byte[] fileBytes, string contentType, string fileName, object outObj)> func,
+           string logContext,
+           out Product baseOutObj,
+           bool skipTokenCheck = false)
+        {
+            baseOutObj = new Product();
 
-        
+            // 🔒 Token validation
+            bool isAnonymous = skipTokenCheck || IsCallerAnonymous();
+            if (!isAnonymous && !CheckToken(out var loginResponse))
+            {
+                return Unauthorized(new
+                {
+                    StatusCode = 401,
+                    Message = "Unauthorized or invalid token."
+                });
+            }
+
+            try
+            {
+                var (fileBytes, contentType, fileName, outObj) = func();
+                baseOutObj = outObj ?? new Product();
+
+                // Return the ZIP or file directly
+                return File(fileBytes, contentType, fileName);
+            }
+            catch (HttpRequestException ex)
+            {
+                LogError(ex, logContext + "_HTTP");
+                outObj = new { Message = "Network error: " + GetSafeErrorMessage(ex) };
+                return StatusCode(503, outObj);
+            }
+            catch (SqlException ex)
+            {
+                LogError(ex, logContext + "_SQL");
+                outObj = new { Message = "Database error: " + GetSafeErrorMessage(ex) };
+                return StatusCode(500, outObj);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                LogError(ex, logContext + "_UNAUTHORIZED");
+                outObj = new { Message = "Access denied: " + GetSafeErrorMessage(ex) };
+                return StatusCode(401, outObj);
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, logContext + "_GENERAL");
+                outObj = new { Message = "Unexpected error: " + GetSafeErrorMessage(ex) };
+                return StatusCode(500, outObj);
+            }
+        }*/
+
+
+        protected IActionResult ExecuteWithHandlingFile(
+            Func<(byte[] fileBytes, string contentType, string fileName, Product outObj)> func,
+            string logContext,
+            out Product baseOutObj,
+            bool skipTokenCheck = false)
+        {
+            baseOutObj = new Product();
+
+            bool isAnonymous = skipTokenCheck || IsCallerAnonymous();
+            if (!isAnonymous && !CheckToken(out var loginResponse))
+            {
+                return Unauthorized(new
+                {
+                    StatusCode = 401,
+                    Message = "Unauthorized or invalid token."
+                });
+            }
+
+            try
+            {
+                var (fileBytes, contentType, fileName, outObj) = func();
+                baseOutObj = outObj ?? new Product();
+
+                // ✅ If outObj.StatusCode != 200 or fileBytes is null → return JSON
+                if (outObj == null || outObj.StatusCode != 200 || fileBytes == null || fileBytes.Length == 0)
+                {
+                    return StatusCode(outObj.StatusCode != 0 ? outObj.StatusCode : 500, outObj);
+                }
+
+                // ✅ Success → return downloadable file
+                return File(fileBytes, contentType, fileName);
+            }
+            catch (HttpRequestException ex)
+            {
+                LogError(ex, logContext + "_HTTP");
+                return StatusCode(503, new { Message = "Network error: " + GetSafeErrorMessage(ex) });
+            }
+            catch (SqlException ex)
+            {
+                LogError(ex, logContext + "_SQL");
+                return StatusCode(500, new { Message = "Database error: " + GetSafeErrorMessage(ex) });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                LogError(ex, logContext + "_UNAUTHORIZED");
+                return StatusCode(401, new { Message = "Access denied: " + GetSafeErrorMessage(ex) });
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, logContext + "_GENERAL");
+                return StatusCode(500, new { Message = "Unexpected error: " + GetSafeErrorMessage(ex) });
+            }
+        }
+
 
         private bool IsCallerAnonymous()
         {
@@ -314,6 +420,7 @@ namespace Jabalpur_Office.Controllers
             ApiHelper.SetOutputParams(status, message, response);
         }
 
+       
         protected void SetOutputWithRetId(SqlParameter status, SqlParameter message,SqlParameter RetID, Product response)
         {
             ApiHelper.SetOutputParamsWithRetId(status, message, RetID, response);
