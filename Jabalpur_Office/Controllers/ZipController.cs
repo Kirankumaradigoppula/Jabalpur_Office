@@ -104,7 +104,7 @@ namespace Jabalpur_Office.Controllers
 
                 // Step 5: Create ZIP safely
                 //byte[] zipBytes;
-                string storageRoot =  _settings.BasePath;//@"E:\CORE_PROJECTS\MpAttachedFiles"; // main file storage path
+                string storageRoot = _settings.BasePath;//@"E:\CORE_PROJECTS\MpAttachedFiles"; //// main file storage path
                 List<string> filePaths = new List<string>();
                 foreach (DataRow row in dt.Rows)
                 {
@@ -123,6 +123,20 @@ namespace Jabalpur_Office.Controllers
 
                 // ✅ Use the universal ZIP helper
                 var (zipBytes, zipName) = ApiHelper.ZipHelper.CreateZipFile(excelFilePath, filePaths, "EventDetails.zip");
+
+                // ✅ Step 6: Cleanup temporary files (Excel + folder)
+                try
+                {
+                    if (Directory.Exists(basePath))
+                    {
+                        Directory.Delete(basePath, recursive: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log only, don’t break flow
+                    Console.WriteLine($"[Cleanup Warning] Failed to delete temp folder: {ex.Message}");
+                }
 
                 return (zipBytes, "application/zip", "EventDetails.zip", outObj);
 
