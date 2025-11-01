@@ -69,28 +69,29 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 //Enable CORS Kiran 
 builder.Services.AddCors(options =>
 {
-    //options.AddPolicy("AllowAll", policy =>
-    //    policy.AllowAnyOrigin()
-    //          .AllowAnyMethod()
-    //          .AllowAnyHeader()
-    //          .SetIsOriginAllowed(_ => true)
-    //          .WithExposedHeaders("Content-Disposition")); // 👈 Needed for file downloads
-
-    options.AddPolicy("AllowSpecificOrigins", policy =>
+    options.AddPolicy("AllowAll", policy =>
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .SetIsOriginAllowed(_ => true)
+              .WithExposedHeaders("Content-Disposition")); // 👈 Needed for file downloads
+    
+    /*options.AddPolicy("AllowSpecificOrigins", policy =>
     {
         policy.WithOrigins(
           "https://digitechkonnect.com",
           "https://www.digitechkonnect.com",
           "https://digitechkonnect.com/TestJabalpur",
           "https://digitechkonnect.com/Jabalpur",
-          "http://localhost:7056"
-      )
+          "http://localhost:7056",
+          "http://localhost:3000"
+        )
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials()
         .SetIsOriginAllowed(_ => true)
          .WithExposedHeaders("Content-Disposition"); // 👈 Needed for file downloads
-    });
+    });*/
 
 });
 
