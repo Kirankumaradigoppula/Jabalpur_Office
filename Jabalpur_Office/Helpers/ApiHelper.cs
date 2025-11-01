@@ -1,6 +1,9 @@
 ﻿using System.Data;
+using System.IO.Compression;
 using System.Reflection;
 using System.Text;
+using iTextSharp.text.pdf;
+using iTextSharp.text;
 using Jabalpur_Office.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
@@ -35,7 +38,7 @@ namespace Jabalpur_Office.Helpers
                          ))
                      .ToList();
         }
-        public static void SetOutputParams(SqlParameter statusParam, SqlParameter messageParam, Product response)
+        public static void SetOutputParams(SqlParameter statusParam, SqlParameter messageParam,  Product response)
         {
             if (response == null) throw new ArgumentNullException(nameof(response));
 
@@ -45,8 +48,11 @@ namespace Jabalpur_Office.Helpers
 
             response.Message = messageParam?.Value?.ToString() ?? "Unknown error";
 
+            
+
         }
-        
+
+
 
         public static void SetOutputParamsWithRetId(SqlParameter statusParam, SqlParameter messageParam, SqlParameter RetIDParam, Product response)
         {
@@ -639,7 +645,137 @@ namespace Jabalpur_Office.Helpers
             }
         }
 
-        
+
+        public static class ZipHelper
+        {
+            /// <summary>
+            /// Creates a ZIP archive in memory containing an Excel file and additional files.
+            /// </summary>
+            /// <param name="excelFilePath">Full path to the Excel file to include (optional).</param>
+            /// <param name="filePaths">List of full file paths to include in the ZIP.</param>
+            /// <param name="zipFileName">Name for the ZIP file (only used for download naming).</param>
+            /// <returns>Tuple with ZIP bytes and the file name.</returns>
+            public static (byte[] ZipBytes, string FileName) CreateZipFile(
+                string excelFilePath,
+                 //IEnumerable<string> filePaths,
+                 List<string> filePaths,
+                string zipFileName)
+            {
+                //if (filePaths == null)
+                //    filePaths = Enumerable.Empty<string>();
+
+                byte[] zipBytes;
+                using (var memoryStream = new MemoryStream())
+                {
+                    using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
+                    {
+                        HashSet<string> addedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        List<string> imageFiles = new();
+
+                        // 1️⃣ Add Excel if provided
+                        // ✅ 1️. Add Excel
+                        if (File.Exists(excelFilePath))
+                        {
+                            string excelName = Path.GetFileName(excelFilePath);
+                            AddFileToArchive(archive, excelFilePath, excelName, addedNames);
+                        }
+
+                        // ✅ 2️. Add all files individually
+                        foreach (var path in filePaths)
+                        {
+                            if (!File.Exists(path)) continue;
+
+                            string entryName = Path.GetFileName(path);
+                            string uniqueName = GetUniqueName(entryName, addedNames);
+                            AddFileToArchive(archive, path, uniqueName, addedNames);
+
+                            // Collect image files separately for the PDF merge
+                            if (IsImageFile(path))
+                                imageFiles.Add(path);
+                        }
+
+                        // ✅ 3️. Add a merged PDF of all images
+                        if (imageFiles.Any())
+                        {
+                            using (var pdfStream = new MemoryStream())
+                            {
+                                CreatePdfFromImages(imageFiles, pdfStream);
+                                pdfStream.Position = 0;
+
+                                var pdfEntry = archive.CreateEntry("All_Images.pdf");
+                                using (var entryStream = pdfEntry.Open())
+                                {
+                                    pdfStream.CopyTo(entryStream);
+                                }
+                            }
+                        }
+
+
+                    }
+
+                    zipBytes = memoryStream.ToArray();
+                }
+
+                return (zipBytes, zipFileName);
+            }
+        }
+
+        private static void CreatePdfFromImages(List<string> imagePaths, Stream output)
+        {
+            using (var doc = new Document(PageSize.A4))
+            {
+                PdfWriter.GetInstance(doc, output);
+                doc.Open();
+
+                foreach (var imgPath in imagePaths)
+                {
+                    try
+                    {
+                        var img = iTextSharp.text.Image.GetInstance(imgPath);
+                        img.ScaleToFit(doc.PageSize.Width - 40, doc.PageSize.Height - 40);
+                        img.Alignment = Element.ALIGN_CENTER;
+                        doc.Add(img);
+                        doc.NewPage();
+                    }
+                    catch
+                    {
+                        // Ignore invalid image formats
+                        continue;
+                    }
+                }
+
+                doc.Close();
+            }
+        }
+
+        // 🧩 Utilities
+
+        private static void AddFileToArchive(ZipArchive archive, string sourcePath, string entryName, HashSet<string> addedNames)
+        {
+            if (!File.Exists(sourcePath)) return;
+
+            var entry = archive.CreateEntry(entryName);
+            using (var entryStream = entry.Open())
+            using (var fileStream = File.OpenRead(sourcePath))
+                fileStream.CopyTo(entryStream);
+
+            addedNames.Add(entryName);
+        }
+
+        private static string GetUniqueName(string entryName, HashSet<string> added)
+        {
+            string unique = entryName;
+            int i = 1;
+            while (added.Contains(unique))
+                unique = $"{Path.GetFileNameWithoutExtension(entryName)}_{i++}{Path.GetExtension(entryName)}";
+            return unique;
+        }
+
+        private static bool IsImageFile(string path)
+        {
+            string[] exts = { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff" };
+            return exts.Contains(Path.GetExtension(path).ToLower());
+        }
 
 
         public static string ReturnWhere(string search)
