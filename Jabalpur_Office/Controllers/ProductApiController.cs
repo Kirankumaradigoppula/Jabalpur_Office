@@ -2170,7 +2170,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudMediaAlbumDetails")]
-        public IActionResult CrudMediaAlbumDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        public IActionResult CrudMediaAlbumDetails([FromForm] string input, [FromForm] List<IFormFile> files) //[FromForm] List<IFormFile> files
         {
             return Ok(ExecuteWithHandling(() =>
             {
@@ -2329,6 +2329,23 @@ namespace Jabalpur_Office.Controllers
                 }
                 if (data["FLAG"]?.ToString() == "DELETE" || data["FLAG"]?.ToString() == "UPDATE_DESCRIPTION")
                 {
+
+                    if (data["FLAG"]?.ToString() == "DELETE")
+                    {
+                        string pQry = @"SELECT TOP 1 IMAGE_PATH FROM MEDIA_ALBUM_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID AND MEDIA_ALBUM_DET_ID=@MEDIA_ALBUM_DET_ID";
+                        pImagePath = Convert.ToString(
+                                  _core.ExecScalarText(
+                                       pQry,
+                                        new[] {
+                                            new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID) ,
+                                            new SqlParameter("@MEDIA_ALBUM_ID",data["MEDIA_ALBUM_ID"]?.ToString()),
+                                            new SqlParameter("@MEDIA_ALBUM_DET_ID",data["MEDIA_ALBUM_DET_ID"]?.ToString())
+
+                                        }
+                                   )
+                               );
+                    }
+
                     // Step 2: Build SQL parameters (advanced dynamic approach)
                     var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
                         data: data,
@@ -2343,20 +2360,7 @@ namespace Jabalpur_Office.Controllers
                     {
                         if (data["FLAG"]?.ToString() == "DELETE")
                         {
-                            string pQry = @"SELECT TOP 1 IMAGE_PATH FROM MEDIA_ALBUM_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID AND MEDIA_ALBUM_DET_ID=@MEDIA_ALBUM_DET_ID";
-                            pImagePath = Convert.ToString(
-                                      _core.ExecScalarText(
-                                           pQry,
-                                            new[] {
-                                            new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID) ,
-                                            new SqlParameter("@MEDIA_ALBUM_ID",data["MEDIA_ALBUM_ID"]?.ToString()),
-                                            new SqlParameter("@MEDIA_ALBUM_DET_ID",data["MEDIA_ALBUM_DET_ID"]?.ToString())
-
-                                            }
-                                       )
-                                   );
-
-
+                            
                             string baseFolderPath = _settings.BasePath;
                             // Build full file path
                             string fullFilePath = Path.Combine(baseFolderPath, pImagePath.Replace("/", "\\"));
@@ -2757,7 +2761,7 @@ namespace Jabalpur_Office.Controllers
 
                     }
                 }
-                if (files == null && (flag =="UPDATE" || flag == "DELETE") )
+                if ( files.Count == 0  )
                 {
 
                     if (flag == "DELETE")
