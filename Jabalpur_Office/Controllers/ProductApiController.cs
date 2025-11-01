@@ -340,6 +340,7 @@ namespace Jabalpur_Office.Controllers
                 //outObj.DataObject = resultObject;
                 outObj.StatusCode = int.Parse(pStatus.Value?.ToString() ?? "500");
                 outObj.Message = pMsg.Value?.ToString() ?? "Internal Error";
+               
                 return outObj;
 
             }, nameof(VerifyOTP), out _, skipTokenCheck: false));
@@ -3695,7 +3696,7 @@ namespace Jabalpur_Office.Controllers
                 var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
                 var filterKeys = ApiHelper.GetFilteredKeys(data);
 
-                var (pSearch, _, _) = ApiHelper.GetSearchAndPagingObject(data);
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
 
                 // Step 2: Build SQL parameters (advanced dynamic approach)
                 var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
@@ -3703,13 +3704,20 @@ namespace Jabalpur_Office.Controllers
                     keys: filterKeys,
                     mpSeatId: pJWT_MP_SEAT_ID,
                     includeTotalCount: true,
-                    includeWhere: true
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
 
                 );
 
                 DataTable dt = _core.ExecProcDt("ReactTrainClassMasterDetails", paramList.ToArray());
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
                 return outObj;
             }, nameof(GetTrainClassMasterDetails), out _, skipTokenCheck: false));
         }
@@ -3750,7 +3758,7 @@ namespace Jabalpur_Office.Controllers
                 var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
                 var filterKeys = ApiHelper.GetFilteredKeys(data);
 
-                var (pSearch, _, _) = ApiHelper.GetSearchAndPagingObject(data);
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
 
                 // Step 2: Build SQL parameters (advanced dynamic approach)
                 var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
@@ -3758,13 +3766,20 @@ namespace Jabalpur_Office.Controllers
                     keys: filterKeys,
                     mpSeatId: pJWT_MP_SEAT_ID,
                     includeTotalCount: true,
-                    includeWhere: true
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
 
                 );
 
                 DataTable dt = _core.ExecProcDt("ReactLanguageMasterDetails", paramList.ToArray());
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
                 return outObj;
             }, nameof(GetLanguageMasterDetails), out _, skipTokenCheck: false));
         }
@@ -3806,7 +3821,7 @@ namespace Jabalpur_Office.Controllers
                 var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
                 var filterKeys = ApiHelper.GetFilteredKeys(data);
 
-                var (pSearch, _, _) = ApiHelper.GetSearchAndPagingObject(data);
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
 
                 // Step 2: Build SQL parameters (advanced dynamic approach)
                 var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
@@ -3814,13 +3829,20 @@ namespace Jabalpur_Office.Controllers
                     keys: filterKeys,
                     mpSeatId: pJWT_MP_SEAT_ID,
                     includeTotalCount: true,
-                    includeWhere: true
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
 
                 );
 
                 DataTable dt = _core.ExecProcDt("ReactNewspaperMasterDetails", paramList.ToArray());
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
                 return outObj;
             }, nameof(GetNewspaperMasterDetails), out _, skipTokenCheck: false));
         }
@@ -5850,8 +5872,6 @@ namespace Jabalpur_Office.Controllers
                 return outObj;
 
             }, nameof(GetVisitorWorkDetailsList), out _, skipTokenCheck: false));
-
-
         }
 
 
@@ -5921,8 +5941,62 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetMailMasterDetails), out _, skipTokenCheck: false));
         }
 
+        //Its Universal For Letter Print - Except Visitor Letter
+        [HttpPost("GetLetterPrintDetails")]
+        public IActionResult GetLetterPrintDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
 
-       
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: false
+
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactEventLetterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+            }, nameof(GetLetterPrintDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("GetUniversalDropDownList")]
+        public IActionResult GetUniversalDropDownList([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: false,
+                    includeWhere: false
+
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactUniversalDropDownList", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+            }, nameof(GetUniversalDropDownList), out _, skipTokenCheck: false));
+        }
 
         [HttpPost("SendSMSService")]
         public async Task<WrapperListData> SendSMSService([FromBody] object input)
