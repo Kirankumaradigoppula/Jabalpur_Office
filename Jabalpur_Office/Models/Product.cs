@@ -7,9 +7,7 @@
     {
         public int StatusCode { get; set; } = 500;
         public string Message { get; set; } = string.Empty;
-        public string LoginStatus { get; set; } = string.Empty;
-
-       
+        public string LoginStatus { get; set; } = string.Empty;   
     }
 
     /// <summary>
@@ -35,7 +33,6 @@
 
         // Generic container for API-specific extra info
         public Dictionary<string, object> ExtraData { get; set; } = new();
-
 
         //public List<Dictionary<string, object>> DataObjectList { get; set; } = new List<Dictionary<string, object>>();
         public Pager Pager { get; internal set; }
