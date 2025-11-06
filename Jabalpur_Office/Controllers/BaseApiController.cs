@@ -127,7 +127,7 @@ namespace Jabalpur_Office.Controllers
             {
                 LogError(ex, logContext + "_GENERAL");
                 baseOutObj.StatusCode = 500;
-                baseOutObj.Message = "An unexpected server error occurred: " + GetSafeErrorMessage(ex);
+                baseOutObj.Message = "An unexpected server error occurred: " + ex.Message.ToString();
             }
 
             return baseOutObj as TResult;
