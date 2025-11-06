@@ -37,7 +37,8 @@ namespace Jabalpur_Office.Controllers
 
         [HttpPost("DownloadEventDetailsZip")]
         public IActionResult DownloadEventDetailsZip([FromBody] object input)
-        {
+        { 
+
             return ExecuteWithHandlingFile(() =>
             {
                 // Step 1: Prepare wrapper and parameters
@@ -139,6 +140,8 @@ namespace Jabalpur_Office.Controllers
                 }
 
                 return (zipBytes, "application/zip", "EventDetails.zip", outObj);
+
+             
 
             }, nameof(DownloadEventDetailsZip), out _, skipTokenCheck: false);
         }
