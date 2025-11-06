@@ -2022,7 +2022,7 @@ namespace Jabalpur_Office.Controllers
 
                                 string newRelativePath = $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{newMediaDate}/{row["IMAGE"]}";
 
-                                string vQryNewMCPathStatus = $"UPDATE MEDIA_ALBUM_CATEGORY SET IMAGE_PATH='" + newRelativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MEDIA_ALBUM_ID='" + pMediaAlbumId + "' ";
+                                string vQryNewMCPathStatus = $"UPDATE MEDIA_ALBUM_CATEGORY SET IMAGE_PATH=N'" + newRelativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MEDIA_ALBUM_ID='" + pMediaAlbumId + "' ";
                                 _core.ExecNonQuery(vQryNewMCPathStatus);
 
                             }
@@ -2057,7 +2057,7 @@ namespace Jabalpur_Office.Controllers
 
                                 string newRelativePath = $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{newMediaDate}/{row["IMAGE"]}";
 
-                                string vQryNewPathStatus = $"UPDATE MEDIA_ALBUM_DETAILS SET IMAGE_PATH='" + newRelativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MEDIA_ALBUM_DET_ID='" + row["MEDIA_ALBUM_DET_ID"] + "' ";
+                                string vQryNewPathStatus = $"UPDATE MEDIA_ALBUM_DETAILS SET IMAGE_PATH=N'" + newRelativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MEDIA_ALBUM_DET_ID='" + row["MEDIA_ALBUM_DET_ID"] + "' ";
                                 _core.ExecNonQuery(vQryNewPathStatus);
 
                             }
@@ -2134,7 +2134,7 @@ namespace Jabalpur_Office.Controllers
                                     string relativePath = string.Empty;
                                     relativePath = $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{data["MEDIA_DATE"]}/{FileName}";
 
-                                    string vQryUpdateStatus = $"UPDATE MEDIA_ALBUM_CATEGORY SET IMAGE='" + FileName + "' ,IMAGE_PATH='" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MEDIA_ALBUM_ID='" + outObj.RetID + "' ";
+                                    string vQryUpdateStatus = $"UPDATE MEDIA_ALBUM_CATEGORY SET IMAGE=N'" + FileName + "' ,IMAGE_PATH=N'" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND MEDIA_ALBUM_ID='" + outObj.RetID + "' ";
                                     _core.ExecNonQuery(vQryUpdateStatus);
 
 
@@ -2286,8 +2286,19 @@ namespace Jabalpur_Office.Controllers
                                     {
                                         Directory.CreateDirectory(finalFolder);
                                     }
+                                    //string pCoverId  = data["MEDIA_ALBUM_ID"]?.ToString();
 
-                                    FileName = Path.GetFileName(file.FileName).Replace(" ", "_").Replace("(", "_").Replace(")", "").Replace("'", "");
+                                    //FileName = pCoverId+'_'+Path.GetFileName(file.FileName).Replace(" ", "_").Replace("(", "_").Replace(")", "").Replace("'", "");
+
+                                    string pCoverId = data["MEDIA_ALBUM_ID"]?.ToString();
+                                    string fileName = Path.GetFileName(file.FileName)
+                                                        .Replace(" ", "_")
+                                                        .Replace("(", "_")
+                                                        .Replace(")", "")
+                                                        .Replace("'", "");
+                                    FileName = pCoverId + "_" + fileName;
+
+
                                     FilePath = Path.Combine(baseFolder, FileName);
                                     string FileFinalPath = Path.Combine(finalFolder, FileName);
 
@@ -2468,9 +2479,24 @@ namespace Jabalpur_Office.Controllers
                     pageSize: pageSize
                 );
 
+
+
+                var pGrandTotalCount = new SqlParameter("@pGrandTotalCount", SqlDbType.Int)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(pGrandTotalCount);
+                
+
                 DataTable dt = _core.ExecProcDt("ReactAlbumCategoryDetails", paramList.ToArray());
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
+
+                // Read @pTotalAmount output value safely
+                if (pGrandTotalCount.Value != DBNull.Value)
+                {
+                    outObj.ExtraData["GrandTotalCount"] = Convert.ToInt32(pGrandTotalCount.Value);
+                }
 
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
@@ -2534,6 +2560,22 @@ namespace Jabalpur_Office.Controllers
                         return outObj;
                     }
                 }
+                if (flag == "DELETE")
+                {
+                    string pQry = @"SELECT  IMAGE_PATH FROM ALBUM_CATEGORY  WHERE MP_SEAT_ID = @MP_SEAT_ID AND ALBUM_CAT_ID=@ALBUM_CAT_ID";
+                    // Get old MEDIA_DATE from DB (before update)
+                    pImagePath = Convert.ToString(
+                         _core.ExecScalarText(
+                              pQry,
+                               new[] {
+                                    new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                                    new SqlParameter("@ALBUM_CAT_ID", data["ALBUM_CAT_ID"]?.ToString())
+
+                               }
+                          )
+                       );
+                }
+
                 // Step 2: Build SQL parameters (advanced dynamic approach)
                 var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
                     data: data,
@@ -2602,7 +2644,7 @@ namespace Jabalpur_Office.Controllers
                             //await file.CopyToAsync(stream); // file is IFormFile
                             file.CopyTo(stream); // sync version
                         }
-                        string vQryUpdateStatus = $"UPDATE ALBUM_CATEGORY SET IMAGE_NAME='" + FileName + "' ,IMAGE_PATH='" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND ALBUM_CAT_ID='" + outObj.RetID + "' ";
+                        string vQryUpdateStatus = $"UPDATE ALBUM_CATEGORY SET IMAGE_NAME=N'" + FileName + "' ,IMAGE_PATH=N'" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND ALBUM_CAT_ID='" + outObj.RetID + "' ";
                         _core.ExecNonQuery(vQryUpdateStatus);
 
                     }
@@ -2610,18 +2652,7 @@ namespace Jabalpur_Office.Controllers
                     {
                         // Base folder
                         string baseFolderPath = _settings.BasePath;
-                        string pQry = @"SELECT  IMAGE_PATH FROM ALBUM_CATEGORY  WHERE MP_SEAT_ID = @MP_SEAT_ID AND ALBUM_CAT_ID=@ALBUM_CAT_ID";
-                        // Get old MEDIA_DATE from DB (before update)
-                        pImagePath = Convert.ToString(
-                             _core.ExecScalarText(
-                                  pQry,
-                                   new[] {
-                                    new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
-                                    new SqlParameter("@ALBUM_CAT_ID", data["ALBUM_CAT_ID"]?.ToString())
-
-                                   }
-                              )
-                           );
+                        
 
                         if (!string.IsNullOrEmpty(pImagePath))
                         {
@@ -2934,12 +2965,15 @@ namespace Jabalpur_Office.Controllers
                          string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
 
                 );
-                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
-                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                 var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+               
 
                 string flag = data.ContainsKey("FLAG") ? data["FLAG"]?.ToString() ?? "" : "";
+
+
                 string pPROFILE_IMAGE = string.Empty;
-                if (files != null && (flag == "DOB_UPDATE" || flag == "DOA_UPDATE"))
+                string pPROFILE_PATH = string.Empty;
+                if (files != null && files.Count > 0 && (flag == "DOB_UPDATE" || flag == "DOA_UPDATE"))
                 {
                     var file = files.First();
                     string[] allowedExt = new[] { ".jpg", ".jpeg", ".png" };
@@ -2982,7 +3016,7 @@ namespace Jabalpur_Office.Controllers
 
                     string fullPath = Path.Combine(finalFolder, pPROFILE_IMAGE);
                     string relativePath = Path.Combine(baseFolder, pPROFILE_IMAGE).Replace("\\", "/");
-
+                    pPROFILE_PATH = relativePath;
                     // Delete existing file if present
                     if (System.IO.File.Exists(fullPath))
                     {
@@ -2995,9 +3029,38 @@ namespace Jabalpur_Office.Controllers
                         file.CopyTo(stream);
                     }
 
-                    data["PROFILE_IMAGE"] = pPROFILE_IMAGE;
+                }
+
+                string pImagePath = string.Empty;
+
+                if (flag == "DOB_DELETE") {
+                    pImagePath = data.ContainsKey("DOB_PROFILE_PATH") ? data["DOB_PROFILE_PATH"]?.ToString() ?? "" : "";
+                    pPROFILE_PATH = pImagePath;
+
+                    if (!string.IsNullOrEmpty(input))
+                    {
+                        var jObj = Newtonsoft.Json.Linq.JObject.Parse(input);
+                        jObj.Remove("DOB_PROFILE_PATH");
+                        input = jObj.ToString();
+                    }
 
                 }
+                if (flag == "DOA_DELETE")
+                {
+                    pImagePath = data.ContainsKey("DOA_PROFILE_PATH") ? data["DOA_PROFILE_PATH"]?.ToString() ?? "" : "";
+                    pPROFILE_PATH = pImagePath;
+
+                    if (!string.IsNullOrEmpty(input))
+                    {
+                        var jObj = Newtonsoft.Json.Linq.JObject.Parse(input);
+                        jObj.Remove("DOA_PROFILE_PATH");
+                        input = jObj.ToString();
+                    }
+
+                }
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                data["PROFILE_IMAGE"] = pPROFILE_IMAGE;
+                data["PROFILE_PATH"] = pPROFILE_PATH;
                 // Step 2: Build SQL parameters (advanced dynamic approach)
                 var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
                     data: data,
@@ -3009,6 +3072,28 @@ namespace Jabalpur_Office.Controllers
 
                 DataTable dt = _core.ExecProcDt("ReactCrudAnniversaryBirthdayDetails", paramList.ToArray());
                 SetOutput(pStatus, pMsg,  outObj);
+                if (outObj.StatusCode == 200)
+                {
+                    if ((flag == "DOB_DELETE" || flag == "DOA_DELETE") && !string.IsNullOrEmpty(pImagePath))
+                    {
+                        string baseFolderPath = _settings.BasePath;
+                        string fullFilePath = Path.Combine(baseFolderPath, pImagePath.Replace("/", "\\"));
+
+                        if (System.IO.File.Exists(fullFilePath))
+                        {
+                            System.IO.File.Delete(fullFilePath);
+
+                            string parentFolder = Path.GetDirectoryName(fullFilePath);
+                            if (!string.IsNullOrEmpty(parentFolder) &&
+                                Directory.Exists(parentFolder) &&
+                                !Directory.EnumerateFileSystemEntries(parentFolder).Any())
+                            {
+                                Directory.Delete(parentFolder, true);
+                            }
+                        }
+
+                    }
+                }
                 return outObj;
             }, nameof(CrudAnniversaryBirthdayDetails), out _, skipTokenCheck: false));
         }
@@ -3498,6 +3583,70 @@ namespace Jabalpur_Office.Controllers
 
         }
 
+
+        [HttpPost("CrudPurposeMasterDetails")]
+        public IActionResult CrudPurposeMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudPurposeMasterDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudPurposeMasterDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetPurposeMasterDetails")]
+        public IActionResult GetPurposeMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactPurposeMasterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+
+            }, nameof(GetPurposeMasterDetails), out _, skipTokenCheck: false));
+        }
 
         [HttpPost("GetDesignationMasterDetails")]
         public IActionResult GetDesignationMasterDetails([FromBody] object input)
@@ -4229,6 +4378,74 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetAllConstituencyWiseMasDetails), out _, skipTokenCheck: false));
         }
 
+        [HttpPost("GetMpProgrammeDetails")]
+        public IActionResult GetMpProgrammeDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactMpProgrammeDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+            }, nameof(GetMpProgrammeDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("GetAcBoothWiseConstituencyDetails")]
+        public IActionResult GetAcBoothWiseConstituencyDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: false
+                );
+
+
+                DataTable dt = _core.ExecProcDt("ReactAcBoothWiseConstituencyDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+
+                return outObj;
+            }, nameof(GetAcBoothWiseConstituencyDetails), out _, skipTokenCheck: false));
+        }
+
         [HttpPost("CrudMpProgrammeDetails")]
         public IActionResult CrudMpProgrammeDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
@@ -4243,7 +4460,7 @@ namespace Jabalpur_Office.Controllers
                 string ext = string.Empty;
                 string flag = data.ContainsKey("FLAG") ? data["FLAG"]?.ToString() ?? "" : "";
                 // ---------------------- FILE VALIDATION (SAVE / UPDATE) ----------------------
-                if (files != null && (flag == "SAVE" || flag == "UPDATE"))
+                if (files != null  && files.Count > 0 &&  (flag == "SAVE" || flag == "UPDATE"))
                 {
                     if (files.Count > 1)
                     {
@@ -4254,12 +4471,12 @@ namespace Jabalpur_Office.Controllers
                     }
 
                     var file = files.First();
-                    string[] allowedExt = new[] { ".jpg", ".png", ".JPG", ".PNG", ".mp4", ".MP4", ".jpeg", ".JPEG" };
+                    string[] allowedExt = new[] { ".jpg", ".png", ".JPG", ".PNG", ".mp4", ".MP4", ".jpeg", ".JPEG",".pdf", ".PDF" };
                     ext = Path.GetExtension(file.FileName).ToLower();
                     if (!allowedExt.Contains(ext))
                     {
                         outObj.StatusCode = 500;
-                        outObj.Message = "Only JPG, PNG, and MP4 files are allowed.";
+                        outObj.Message = "Only JPG, PNG,PDF and MP4 files are allowed.";
                         outObj.LoginStatus = pJWT_LOGIN_NAME;
                         return outObj;
                     }
@@ -4273,6 +4490,57 @@ namespace Jabalpur_Office.Controllers
                         outObj.LoginStatus = pJWT_LOGIN_NAME;
                         return outObj;
                     }
+                }
+                List<string> allPaths = new List<string>();
+                if (flag == "DELETE")
+                {
+                    string deleteIds = data.ContainsKey("MP_PROG_ID")
+                         ? data["MP_PROG_ID"]?.ToString() ?? outObj.RetID.ToString()
+                    : outObj.RetID.ToString();
+
+                    if (string.IsNullOrEmpty(deleteIds))
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = "No IDs provided for deletion.";
+                        outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        return outObj;
+                    }
+                    // 1️⃣ Get files from MP_PROGRAMME
+
+                    string pQry = $@"
+                            SELECT FILE_PATH FROM MP_PROGRAMME 
+                            WHERE MP_SEAT_ID = @MP_SEAT_ID AND MP_PROG_ID IN ({deleteIds})"; ;
+                    // Get old MEDIA_DATE from DB (before update)
+                    DataTable dtProgramme = _core.ExecDtText(pQry,
+                       new[]
+                        {
+                           new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                        }
+                     );
+
+                    // 2️⃣ Get files from DOC_MAS
+                    string qDoc = $@"
+                          SELECT DOC_PATH FROM DOC_MAS  
+                          WHERE MP_SEAT_ID = @MP_SEAT_ID 
+                            AND REFERENCE_ID IN ({deleteIds}) 
+                            AND MODULE_NM = 'EVENT'";
+
+                    DataTable dtDocs = _core.ExecDtText(qDoc,
+                        new[]
+                         {
+                                  new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                         }
+                    );
+
+                    // Combine both sets
+                    allPaths = dtProgramme.AsEnumerable()
+                        .Select(r => r["FILE_PATH"]?.ToString())
+                        .Concat(dtDocs.AsEnumerable().Select(r => r["DOC_PATH"]?.ToString()))
+                        .Where(p => !string.IsNullOrWhiteSpace(p))
+                        .Distinct()
+                        .ToList();
+
+
                 }
                
 
@@ -4291,7 +4559,7 @@ namespace Jabalpur_Office.Controllers
                 if (outObj.StatusCode == 200)
                 {
                     string baseFolderPath = _settings.BasePath;
-                    if (files != null && (flag == "SAVE" || flag == "UPDATE"))
+                    if (files != null && files.Count > 0 && (flag == "SAVE" || flag == "UPDATE"))
                     {
                         var file = files.First();
                         string storageRoot = _settings.BasePath;
@@ -4320,58 +4588,10 @@ namespace Jabalpur_Office.Controllers
                     }
                     if (flag == "DELETE")
                     {
-                        string deleteIds = data.ContainsKey("MP_PROG_ID")
-                         ? data["MP_PROG_ID"]?.ToString() ?? outObj.RetID.ToString()
-                    :    outObj.RetID.ToString();
-
-                        if (string.IsNullOrEmpty(deleteIds))
-                        {
-                            outObj.StatusCode = 400;
-                            outObj.Message = "No IDs provided for deletion.";
-                            outObj.LoginStatus = pJWT_LOGIN_NAME;
-                            return outObj;
-                        }
-                        // 1️⃣ Get files from MP_PROGRAMME
-
-                        string pQry = $@"
-                            SELECT FILE_PATH FROM MP_PROGRAMME 
-                            WHERE MP_SEAT_ID = @MP_SEAT_ID AND MP_PROG_ID IN ({deleteIds})"; ;
-                        // Get old MEDIA_DATE from DB (before update)
-                           DataTable dtProgramme = _core.ExecDtText(pQry,
-                            new[]
-                             {
-                                  new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
-                             }
-                         );
-
-                        // 2️⃣ Get files from DOC_MAS
-                        string qDoc = $@"
-                          SELECT DOC_PATH FROM DOC_MAS  
-                          WHERE MP_SEAT_ID = @MP_SEAT_ID 
-                            AND REFERENCE_ID IN ({deleteIds}) 
-                            AND MODULE_NM = 'EVENT'";
-                          
-                        DataTable dtDocs = _core.ExecDtText(qDoc,
-                            new[]
-                             {
-                                  new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
-                             }
-                        );
-
-                        // Combine both sets
-                        var allPaths = dtProgramme.AsEnumerable()
-                            .Select(r => r["FILE_PATH"]?.ToString())
-                            .Concat(dtDocs.AsEnumerable().Select(r => r["DOC_PATH"]?.ToString()))
-                            .Where(p => !string.IsNullOrWhiteSpace(p))
-                            .Distinct()
-                            .ToList();
-
-                        string fullFilePath = string.Empty;
-                        // 3️⃣ Delete all found files
-
+                        
                         foreach (var pPath in allPaths)
                         {
-                             fullFilePath = Path.Combine(baseFolderPath, pPath.Replace("/", "\\"));
+                            string fullFilePath    = Path.Combine(baseFolderPath, pPath.Replace("/", "\\"));
                             try
                             {
                                 if (System.IO.File.Exists(fullFilePath))
@@ -4525,6 +4745,24 @@ namespace Jabalpur_Office.Controllers
                 // ----------------------------------------------------------------
                 // 📌 CASE 2: SINGLE UPDATE OR DELETE (DB CALL ONCE)
                 // ----------------------------------------------------------------
+                string pDeleteImagePath = string.Empty;
+                if (flag == "DELETE")
+                {
+                    string pDeleteQry = @"SELECT TOP 1 DOC_PATH FROM DOC_MAS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND ID=@ID";
+                    // Get old MEDIA_DATE from DB (before update)
+                     pDeleteImagePath = Convert.ToString(
+                         _core.ExecScalarText(
+                              pDeleteQry,
+                               new[] {
+                                     new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                                     new SqlParameter("@ID", data["ID"]?.ToString())
+
+                               }
+                       )
+                    );
+                }
+
+
                 var (paramList2, pStatus2, pMsg2, pRetId2) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
                     data: data,
                     keys: filterKeys,
@@ -4584,18 +4822,7 @@ namespace Jabalpur_Office.Controllers
                     }
                     if (flag == "DELETE")
                     {
-                        string pDeleteQry = @"SELECT TOP 1 DOC_PATH FROM DOC_MAS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND ID=@ID";
-                        // Get old MEDIA_DATE from DB (before update)
-                        string pDeleteImagePath = Convert.ToString(
-                             _core.ExecScalarText(
-                                  pDeleteQry,
-                                   new[] {
-                                     new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
-                                     new SqlParameter("@ID", data["ID"]?.ToString())
-
-                                   }
-                           )
-                        );
+                       
 
                         if (!string.IsNullOrEmpty(pDeleteImagePath))
                         {
