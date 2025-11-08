@@ -10,6 +10,7 @@ using static Jabalpur_Office.Helpers.ApiHelper;
 using System.Data;
 using System.IO.Compression;
 using ClosedXML.Excel;
+using Microsoft.Data.SqlClient;
 
 
 namespace Jabalpur_Office.Controllers
@@ -35,9 +36,145 @@ namespace Jabalpur_Office.Controllers
             _settings = settings.Value;
         }
 
+
+        [HttpPost("DownloadDetailsDataInZip")]
+
+        public IActionResult DownloadDetailsDataInZip([FromBody] object input)
+        {
+
+            return ExecuteWithHandlingFile(() =>
+            {
+                // Step 1: Prepare wrapper and parameters
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData);
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: false,
+                    includeWhere: false
+                );
+
+
+                var FOLDER_NAME = new SqlParameter("@pFOLDER_NAME", SqlDbType.Bit)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(FOLDER_NAME);
+
+                // Step 2: Get data from DB
+                DataTable dt = _core.ExecProcDt("ReactDownloadDetailsDataInZip", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                if (outObj.StatusCode != 200)
+                {
+                    //return (Array.Empty<byte>(), "application/json", "error.json", outObj);
+
+                    outObj.StatusCode = outObj.StatusCode == 0 ? 500 : outObj.StatusCode;
+                    outObj.Message = string.IsNullOrEmpty(outObj.Message)
+                        ? "No data available or error occurred."
+                        : outObj.Message;
+
+                    // Instead of returning an empty file, return JSON
+                    return (null, "application/json", "error.json", outObj);
+                }
+
+
+                string folderName = $"{pJWT_MP_SEAT_ID}_Data_{DateTime.Now:yyyyMMdd_HHmmss}";
+                if (FOLDER_NAME.Value != DBNull.Value)
+                {
+                    folderName =Convert.ToString(FOLDER_NAME.Value);
+                }
+
+
+                // Step 3: Create Excel (excluding file path columns)
+                string basePath = Path.Combine(Directory.GetCurrentDirectory(), _settings.BasePath, "image", $"MP_{pJWT_MP_SEAT_ID}", "Download", folderName);
+                Directory.CreateDirectory(basePath);
+
+                string excelFilePath = Path.Combine(basePath, $"{folderName}.xlsx");
+
+                // Create a clean DataTable for Excel (exclude file/path columns)
+                // 3️⃣ Remove file/path columns for Excel only
+                DataTable dtForExcel = dt.Copy();
+                var fileColumns = dt.Columns.Cast<DataColumn>() // ✅ FIX: use original dt, not dtForExcel
+                    .Where(c => c.ColumnName.ToUpper().Contains("FILE_PATH") || c.ColumnName.ToUpper().Contains("FILE"))
+                    .ToList();
+
+                var excelColumnsToRemove = dtForExcel.Columns.Cast<DataColumn>()
+                    .Where(c => c.ColumnName.ToUpper().Contains("FILE_PATH") || c.ColumnName.ToUpper().Contains("FILE"))
+                    .ToList();
+
+                foreach (var col in excelColumnsToRemove)
+                    dtForExcel.Columns.Remove(col);
+
+                // 4️⃣ Create Excel file
+                using (var workbook = new XLWorkbook())
+                {
+                    var ws = workbook.Worksheets.Add("Event Details");
+                    ws.Cell(1, 1).InsertTable(dtForExcel, "Events", true);
+                    workbook.SaveAs(excelFilePath);
+                }
+
+                // Step 5: Create ZIP safely
+                //byte[] zipBytes;
+                string storageRoot = _settings.BasePath;//@"E:\CORE_PROJECTS\MpAttachedFiles"; //// main file storage path
+                List<string> filePaths = new List<string>();
+                foreach (DataRow row in dt.Rows)
+                {
+                    foreach (var col in fileColumns)
+                    {
+                        string rel = Convert.ToString(row[col])?.Trim();
+                        if (!string.IsNullOrEmpty(rel))
+                        {
+                            string fullPath = Path.Combine(storageRoot,
+                                rel.TrimStart('~', '/', '\\').Replace("/", Path.DirectorySeparatorChar.ToString()));
+                            if (System.IO.File.Exists(fullPath))
+                                filePaths.Add(fullPath);
+                        }
+                    }
+                }
+
+                // ✅ Use the universal ZIP helper
+                var (zipBytes, zipName) = ApiHelper.ZipHelper.CreateZipFile(excelFilePath, filePaths, "EventDetails.zip");
+
+                // ✅ Step 6: Cleanup temporary files (Excel + folder)
+                try
+                {
+                    if (Directory.Exists(basePath))
+                    {
+                        Directory.Delete(basePath, recursive: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log only, don’t break flow
+                    Console.WriteLine($"[Cleanup Warning] Failed to delete temp folder: {ex.Message}");
+                }
+
+                // Step 2: Add extra info into outObj
+                outObj.ExtraData["ZIP_DETAILS"] = new
+                {
+                    ExcelFilePath = excelFilePath,
+                    FilePaths = filePaths,  // list or array of paths
+                    ZipName = zipName,
+                    Message = $"Zip created successfully with {filePaths?.Count ?? 0} files."
+                };
+
+                return (zipBytes, "application/zip", "EventDetails.zip", outObj);
+
+
+
+            }, nameof(DownloadDetailsDataInZip), out _, skipTokenCheck: false);
+
+        }
+
         [HttpPost("DownloadEventDetailsZip")]
+
         public IActionResult DownloadEventDetailsZip([FromBody] object input)
-        { 
+        {
 
             return ExecuteWithHandlingFile(() =>
             {
@@ -139,11 +276,21 @@ namespace Jabalpur_Office.Controllers
                     Console.WriteLine($"[Cleanup Warning] Failed to delete temp folder: {ex.Message}");
                 }
 
+                // Step 2: Add extra info into outObj
+                outObj.ExtraData["ZIP_DETAILS"] = new
+                {
+                    ExcelFilePath = excelFilePath,
+                    FilePaths = filePaths,  // list or array of paths
+                    ZipName = zipName,
+                    Message = $"Zip created successfully with {filePaths?.Count ?? 0} files."
+                };
+
                 return (zipBytes, "application/zip", "EventDetails.zip", outObj);
 
-             
+
 
             }, nameof(DownloadEventDetailsZip), out _, skipTokenCheck: false);
+
         }
     }
 }
