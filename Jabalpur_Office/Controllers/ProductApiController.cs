@@ -4414,6 +4414,56 @@ namespace Jabalpur_Office.Controllers
 
         }
 
+        [HttpPost("GetMandalMasterDetails")]
+        public IActionResult GetMandalMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                var pGrandTotalBooth = new SqlParameter("@pGrandTotalBooth", SqlDbType.Int)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(pGrandTotalBooth);
+
+                DataTable dt = _core.ExecProcDt("ReactMandalMasterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // Read @pTotalAmount output value safely
+                if (pGrandTotalBooth.Value != DBNull.Value)
+                {
+                    outObj.ExtraData["GRAND_TOTAL_BOOTHS"] = Convert.ToInt32(pGrandTotalBooth.Value);
+                }
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+            }, nameof(GetMandalMasterDetails), out _, skipTokenCheck: false));
+        }
+
 
         [HttpPost("GetAllConstituencyWiseMasDetails")]
         public IActionResult GetAllConstituencyWiseMasDetails([FromBody] object input)
