@@ -539,7 +539,8 @@ namespace Jabalpur_Office.Helpers
                 int.TryParse(totalCountStr, out total);
 
                 outObj.Pager = new Pager(total, pageIndex, pageSize);
-                outObj.StatusCode = 200;
+                //outObj.StatusCode = 200;
+                
             }
         }
 
