@@ -698,6 +698,7 @@ namespace Jabalpur_Office.Controllers
                     jObj.Remove("FILE_STATUS");
                     jObj.Remove("P_FILE_STATUS");
                     jObj.Remove("M_FILE_STATUS");
+                    jObj.Remove("L_FILE_STATUS");
                     input = jObj.ToString();
                 }
 
@@ -724,7 +725,7 @@ namespace Jabalpur_Office.Controllers
                 DataTable dt = _core.ExecProcDt("ReactCrudConstructionWorkDetails", paramList.ToArray());
                 SetOutput(pStatus, pMsg, outObj);
 
-                if (outObj.StatusCode == 200 &&  (data["STAGES_MAS_ID"]?.ToString() == "1" || data["STAGES_MAS_ID"]?.ToString() =="7" || data["STAGES_MAS_ID"]?.ToString() == "9"))
+                if (outObj.StatusCode == 200 &&  (data["STAGES_MAS_ID"]?.ToString() == "1" || data["STAGES_MAS_ID"]?.ToString() =="7" || data["STAGES_MAS_ID"]?.ToString() == "9" || data["STAGES_MAS_ID"]?.ToString() == "10"))
                 {
                     // Step 1: Validate & handle file uploads
                     if (files != null && files.Count > 0)
@@ -2339,12 +2340,59 @@ namespace Jabalpur_Office.Controllers
 
                     }
                 }
-                if (data["FLAG"]?.ToString() == "DELETE" || data["FLAG"]?.ToString() == "UPDATE_DESCRIPTION")
+                List<string> allPaths = new List<string>();
+                if (data["FLAG"]?.ToString() == "DELETE" || data["FLAG"]?.ToString() == "DELETE_IMAGE" || data["FLAG"]?.ToString() == "UPDATE_DESCRIPTION")
                 {
-
-                    if (data["FLAG"]?.ToString() == "DELETE")
+                    if (data["FLAG"]?.ToString() == "DELETE" || data["FLAG"]?.ToString() == "DELETE_IMAGE")
                     {
-                        string pQry = @"SELECT TOP 1 IMAGE_PATH FROM MEDIA_ALBUM_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID AND MEDIA_ALBUM_DET_ID=@MEDIA_ALBUM_DET_ID";
+
+                        string deleteMediaCatIds = data.ContainsKey("MEDIA_ALBUM_ID")
+                                 ? data["MEDIA_ALBUM_ID"]?.ToString() ?? outObj.RetID.ToString()
+                           : outObj.RetID.ToString();
+
+                        if (string.IsNullOrEmpty(deleteMediaCatIds))
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "No IDs provided for deletion.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+
+                        string deleteMediaDetailIds = data.ContainsKey("MEDIA_ALBUM_DET_ID")
+                             ? data["MEDIA_ALBUM_DET_ID"]?.ToString() ?? outObj.RetID.ToString()
+                        : outObj.RetID.ToString();
+
+                        if (string.IsNullOrEmpty(deleteMediaDetailIds))
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "No IDs provided for deletion.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+
+                        // 1️⃣ Get files from MP_PROGRAMME
+
+                        string pQry = $@"
+                         SELECT IMAGE_PATH AS FILE_PATH FROM MEDIA_ALBUM_DETAILS 
+                         WHERE MP_SEAT_ID = @MP_SEAT_ID AND MEDIA_ALBUM_ID IN ({deleteMediaCatIds}) 
+                         AND MEDIA_ALBUM_DET_ID IN ({deleteMediaDetailIds}) ";
+
+                        DataTable dtMAD = _core.ExecDtText(pQry,
+                          new[]
+                           {
+                              new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                           }
+                          );
+                        // Combine both sets
+                        allPaths = dtMAD.AsEnumerable()
+                            .Select(r => r["FILE_PATH"]?.ToString())
+                            .Where(p => !string.IsNullOrWhiteSpace(p))
+                            .Distinct()
+                            .ToList();
+
+
+
+                        /*string pQry = @"SELECT TOP 1 IMAGE_PATH FROM MEDIA_ALBUM_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID AND MEDIA_ALBUM_DET_ID=@MEDIA_ALBUM_DET_ID";
                         pImagePath = Convert.ToString(
                                   _core.ExecScalarText(
                                        pQry,
@@ -2355,7 +2403,7 @@ namespace Jabalpur_Office.Controllers
 
                                         }
                                    )
-                               );
+                               );*/
                     }
 
                     // Step 2: Build SQL parameters (advanced dynamic approach)
@@ -2370,10 +2418,22 @@ namespace Jabalpur_Office.Controllers
                     SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
                     if (outObj.StatusCode == 200)
                     {
-                        if (data["FLAG"]?.ToString() == "DELETE")
+                        if (data["FLAG"]?.ToString() == "DELETE"  || data["FLAG"]?.ToString() == "DELETE_IMAGE")
                         {
-                            
                             string baseFolderPath = _settings.BasePath;
+                            foreach (var pPath in allPaths)
+                            {
+                                string fullFilePath = Path.Combine(baseFolderPath, pPath.Replace("/", "\\"));
+                                if (!DeletePhysicalFileWithMessage(pPath, out string err))
+                                {
+                                    outObj.StatusCode = 400;
+                                    outObj.Message = $"Failed to delete file: {pPath}. Error: {err}";
+                                    outObj.LoginStatus = pJWT_LOGIN_NAME;
+                                    return outObj;
+                                }
+                            }
+
+                            /*string baseFolderPath = _settings.BasePath;
                             // Build full file path
                             string fullFilePath = Path.Combine(baseFolderPath, pImagePath.Replace("/", "\\"));
                             if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
@@ -2388,7 +2448,7 @@ namespace Jabalpur_Office.Controllers
                                     Directory.Delete(parentFolder, true); // delete folder if empty
                                 }
 
-                            }
+                            }*/
                         }
                     }
                 }
@@ -2793,12 +2853,60 @@ namespace Jabalpur_Office.Controllers
 
                     }
                 }
+                List<string> allPaths = new List<string>();
                 if ( files.Count == 0  )
                 {
-
-                    if (flag == "DELETE")
+                    
+                    if (flag == "DELETE" || flag == "DELETE_IMAGE")
                     {
-                        string pQry = @"SELECT TOP 1 IMAGE_PATH FROM ALBUM_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND ALBUM_CAT_ID=@ALBUM_CAT_ID AND ALBUM_DET_ID=@ALBUM_DET_ID";
+
+                        string deleteAlbumCatIds = data.ContainsKey("ALBUM_CAT_ID")
+                         ? data["ALBUM_CAT_ID"]?.ToString() ?? outObj.RetID.ToString()
+                          : outObj.RetID.ToString();
+
+                        if (string.IsNullOrEmpty(deleteAlbumCatIds))
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "No IDs provided for deletion.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+
+                        string deleteAlbumDetailIds = data.ContainsKey("ALBUM_DET_ID")
+                             ? data["ALBUM_DET_ID"]?.ToString() ?? outObj.RetID.ToString()
+                        : outObj.RetID.ToString();
+
+                        if (string.IsNullOrEmpty(deleteAlbumDetailIds))
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "No Album IDs  provided for deletion.";
+                            outObj.LoginStatus = pJWT_LOGIN_NAME;
+                            return outObj;
+                        }
+
+                        // 1️⃣ Get files from MP_PROGRAMME
+
+                        string pQry = $@"
+                          SELECT IMAGE_PATH AS FILE_PATH FROM ALBUM_DETAILS 
+                          WHERE MP_SEAT_ID = @MP_SEAT_ID AND ALBUM_CAT_ID IN ({deleteAlbumCatIds}) 
+                          AND ALBUM_DET_ID IN ({deleteAlbumDetailIds}) ";
+
+                        DataTable dtMAD = _core.ExecDtText(pQry,
+                          new[]
+                           {
+                              new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                           }
+                          );
+                        // Combine both sets
+                        allPaths = dtMAD.AsEnumerable()
+                            .Select(r => r["FILE_PATH"]?.ToString())
+                            .Where(p => !string.IsNullOrWhiteSpace(p))
+                            .Distinct()
+                            .ToList();
+
+
+                        /* Date :- 28112025
+                         * string pQry = @"SELECT TOP 1 IMAGE_PATH FROM ALBUM_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND ALBUM_CAT_ID=@ALBUM_CAT_ID AND ALBUM_DET_ID=@ALBUM_DET_ID";
                         pImagePath = Convert.ToString(
                                   _core.ExecScalarText(
                                        pQry,
@@ -2809,7 +2917,7 @@ namespace Jabalpur_Office.Controllers
 
                                         }
                                    )
-                               );
+                               );*/
 
                     }
                     // Step 2: Build SQL parameters (advanced dynamic approach)
@@ -2824,11 +2932,23 @@ namespace Jabalpur_Office.Controllers
                     SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
                     if (outObj.StatusCode == 200)
                     {
-                        if (data["FLAG"]?.ToString() == "DELETE")
+                        if (data["FLAG"]?.ToString() == "DELETE" || data["FLAG"]?.ToString() == "DELETE_IMAGE")
                         {
-                            
 
                             string baseFolderPath = _settings.BasePath;
+                            foreach (var pPath in allPaths)
+                            {
+                                string fullFilePath = Path.Combine(baseFolderPath, pPath.Replace("/", "\\"));
+                                if (!DeletePhysicalFileWithMessage(pPath, out string err))
+                                {
+                                    outObj.StatusCode = 400;
+                                    outObj.Message = $"Failed to delete file: {pPath}. Error: {err}";
+                                    outObj.LoginStatus = pJWT_LOGIN_NAME;
+                                    return outObj;
+                                }
+                            }
+
+                            /*string baseFolderPath = _settings.BasePath;
                             // Build full file path
                             string fullFilePath = Path.Combine(baseFolderPath, pImagePath.Replace("/", "\\"));
                             if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
@@ -2843,7 +2963,7 @@ namespace Jabalpur_Office.Controllers
                                     Directory.Delete(parentFolder, true); // delete folder if empty
                                 }
 
-                            }
+                            }*/
                         }
                     }
                 }
@@ -4658,14 +4778,28 @@ namespace Jabalpur_Office.Controllers
                     pageSize: pageSize
                 );
 
-                DataTable dt = _core.ExecProcDt("ReactMpProgrammeDetails", paramList.ToArray());
-                ApiHelper.SetDataTableListOutput(dt, outObj);
+                //DataTable dt = _core.ExecProcDt("ReactMpProgrammeDetails", paramList.ToArray());
+                //ApiHelper.SetDataTableListOutput(dt, outObj);
+
+                DataSet ds = _core.ExecProcDs("ReactMpProgrammeDetails", paramList.ToArray());
+                
+                ApiHelper.SetDataTableListOutput(ds.Tables[0], outObj);
+
+                //SetOutput(pStatus, pMsg, outObj);
+
                 SetOutput(pStatus, pMsg, outObj);
 
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
                     PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                // COLUMN LIST (Table 1)
+                if (ds.Tables.Count > 1 && ds.Tables[1] != null && ds.Tables[1].Rows.Count > 0)
+                {
+                    outObj.ExtraData["COLUMN_LIST"] =
+                       ds.Tables[1].Rows[0]["COLUMN_JSON"]?.ToString() ?? "[]";
                 }
 
                 return outObj;
@@ -5474,6 +5608,7 @@ namespace Jabalpur_Office.Controllers
 
                 if (flag == "SAVE")
                 {
+                    if(files.Any() == false)
                     {
                         outObj.StatusCode = 500;
                         outObj.Message = "Outward file is required.";
@@ -5504,12 +5639,12 @@ namespace Jabalpur_Office.Controllers
                     if (fileSizeInMB > 100)
                     {
                         outObj.StatusCode = 400;
-                        outObj.Message = $"File '{file.FileName}' exceeds 100 limit.";
+                        outObj.Message = $"File '{file.FileName}' exceeds 100 MB limit.";
                         outObj.LoginStatus = pJWT_LOGIN_NAME;
                         return outObj;
                     }
                 }
-                if (flag == "DELETE")
+                if (flag == "DELETE" || flag == "DELETE_IMAGE")
                 {
                     string pQry = @"SELECT  VIS_OUTWARD_DOC_PATH FROM VISITOR_OUTWARD_DETAILS  WHERE MP_SEAT_ID = @MP_SEAT_ID AND VIS_OUT_MAS_ID=@VIS_OUT_MAS_ID";
                     // Get old MEDIA_DATE from DB (before update)
@@ -5536,7 +5671,7 @@ namespace Jabalpur_Office.Controllers
                 SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
                 if (outObj.StatusCode == 200)
                 {
-                    if (flag == "SAVE" || flag == "UPDATE" && (files != null && files.Count > 0))
+                    if (flag == "SAVE" || flag == "UPDATE" && (files != null && files.Count > 0) && files.Any() == true)
                     {
                         if (files.Count > 1)
                         {
@@ -5594,7 +5729,7 @@ namespace Jabalpur_Office.Controllers
                         string vQryUpdateStatus = $"UPDATE VISITOR_OUTWARD_DETAILS SET VIS_OUTWARD_DOC='" + FileName + "' ,VIS_OUTWARD_DOC_PATH='" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND VIS_OUT_MAS_ID='" + outObj.RetID + "' ";
                         _core.ExecNonQuery(vQryUpdateStatus);
                     }
-                    if (flag == "DELETE")
+                    if (flag == "DELETE" || flag == "DELETE_IMAGE")
                     {
                         // Base folder
                         string baseFolderPath = _settings.BasePath;
@@ -6347,6 +6482,54 @@ namespace Jabalpur_Office.Controllers
             }
         }
 
+        private bool DeletePhysicalFileWithMessage(string relativePath, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+
+            try
+            {
+                if (string.IsNullOrEmpty(relativePath))
+                    return true;
+
+                // 2. Normalize the path
+                relativePath = relativePath.Replace("/", "\\").TrimStart('\\');
+
+                // 3. Build full physical path
+                string physicalPath = Path.Combine(_settings.BasePath, relativePath);
+
+                // 4. Security Check → Prevent deleting outside BasePath
+                string fullBase = Path.GetFullPath(_settings.BasePath);
+                string fullTarget = Path.GetFullPath(physicalPath);
+
+                if (!fullTarget.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase))
+                {
+                    errorMessage = "Invalid file path detected.";
+                    return false;
+                }
+
+                // 5. Delete file if exists
+                if (System.IO.File.Exists(physicalPath))
+                {
+                    System.IO.File.Delete(physicalPath);
+
+                    string folder = Path.GetDirectoryName(physicalPath);
+
+                    if (Directory.Exists(folder) &&
+                        !Directory.EnumerateFileSystemEntries(folder).Any())
+                    {
+                        Directory.Delete(folder, true);
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
+        }
+
 
         [HttpPost("GetVisitorWorkDetailsList")]
         public IActionResult GetVisitorWorkDetailsList([FromBody] object input)
@@ -6378,8 +6561,14 @@ namespace Jabalpur_Office.Controllers
                 };
                 paramList.Add(pTotalAmount);
 
-                DataTable dt = _core.ExecProcDt("ReactVisitorWorkDetails", paramList.ToArray());
-                ApiHelper.SetDataTableListOutput(dt, outObj);
+                //DataTable dt = _core.ExecProcDt("ReactVisitorWorkDetails", paramList.ToArray());
+                //ApiHelper.SetDataTableListOutput(dt, outObj);
+
+                 DataSet ds = _core.ExecProcDs("ReactVisitorWorkDetails", paramList.ToArray());
+                
+                 ApiHelper.SetDataTableListOutput(ds.Tables[0], outObj);
+
+
                 SetOutput(pStatus, pMsg, outObj);
 
                 // Read @pTotalAmount output value safely
@@ -6387,6 +6576,35 @@ namespace Jabalpur_Office.Controllers
                 {
                     outObj.ExtraData["TotalAmount"] = Convert.ToInt32(pTotalAmount.Value);
                 }
+                // COLUMN LIST (Table 1)
+                if (ds.Tables.Count > 1 && ds.Tables[1] != null && ds.Tables[1].Rows.Count > 0)
+                {
+                    outObj.ExtraData["COLUMN_LIST"] =
+                       ds.Tables[1].Rows[0]["COLUMN_JSON"]?.ToString() ?? "[]";
+                }
+
+                // LABEL LIST (Table 2)
+                //if (ds.Tables.Count > 2 && ds.Tables[2] != null)
+                //{
+
+                //    DataTable dt = ds.Tables[2];
+
+                //    var list = new List<Dictionary<string, object>>();
+
+                //    foreach (DataRow row in dt.Rows)
+                //    {
+                //        var dict = new Dictionary<string, object>();
+
+                //        foreach (DataColumn col in dt.Columns)
+                //        {
+                //            dict[col.ColumnName] = row[col];
+                //        }
+
+                //        list.Add(dict);
+                //    }
+
+                //    outObj.ExtraData["LABEL_LIST"] = list;
+                //}
 
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
@@ -6397,6 +6615,26 @@ namespace Jabalpur_Office.Controllers
                 return outObj;
 
             }, nameof(GetVisitorWorkDetailsList), out _, skipTokenCheck: false));
+        }
+
+        public static List<string> GetColumnListFromDataTable(DataTable dt)
+        {
+            if (dt == null) return new List<string>();
+
+            return dt.Columns.Cast<DataColumn>()
+                     .Select(c => c.ColumnName)
+                     .ToList();
+        }
+
+        public static List<string> GetLabelListFromDataTable(DataTable dt)
+        {
+            if (dt == null || dt.Rows.Count == 0)
+                return new List<string>();
+
+            return dt.AsEnumerable()
+                     .Select(r => r[0]?.ToString() ?? string.Empty)
+                     .Where(x => !string.IsNullOrWhiteSpace(x))
+                     .ToList();
         }
 
 
@@ -6676,6 +6914,103 @@ namespace Jabalpur_Office.Controllers
                 return outObj;
             }, nameof(GetVoterIdCardDetails), out _, skipTokenCheck: false));
         }
+
+        [HttpPost("GetDynamicColumnList")]
+        public IActionResult GetDynamicColumnList([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: false,
+                    includeWhere: false
+                );
+
+
+                DataTable dt = _core.ExecProcDt("ReactDynamicColumnList", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                return outObj;
+
+            }, nameof(GetDynamicColumnList), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("CrudProcedureColumnMappingTableDetails")]
+        public IActionResult CrudProcedureColumnMappingTableDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudProcedureColumnMappingTableDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudProcedureColumnMappingTableDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetProcedureColumnMappingTableDetails")]
+        public IActionResult GetProcedureColumnMappingTableDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactProcedureColumnMappingTableDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+            }, nameof(GetProcedureColumnMappingTableDetails), out _, skipTokenCheck: false));
+        }
+
+
 
         [HttpPost("SendSMSService")]
         public async Task<WrapperListData> SendSMSService([FromBody] object input)
