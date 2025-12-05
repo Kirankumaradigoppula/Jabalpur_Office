@@ -242,6 +242,34 @@ namespace Jabalpur_Office.ServiceCore
             }
         }
 
+        //public DataSet ExecProcDs(string procName, SqlParameter[] parameters = null)
+        //{
+        //    DataSet ds = new DataSet();
+
+        //    using (SqlConnection con = new SqlConnection(_connectionString))
+        //    {
+        //        using (SqlCommand cmd = new SqlCommand(procName, con))
+        //        {
+        //            cmd.CommandType = CommandType.StoredProcedure;
+        //            cmd.CommandTimeout = 120;
+
+        //            if (parameters != null)
+        //            {
+        //                foreach (var p in parameters)
+        //                    cmd.Parameters.Add(p);
+        //            }
+
+        //            using (SqlDataAdapter da = new SqlDataAdapter(cmd))
+        //            {
+        //                da.Fill(ds);
+        //            }
+        //        }
+        //    }
+
+        //    return ds;
+        //}
+
+
 
     }
 }
