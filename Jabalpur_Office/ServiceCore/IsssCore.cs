@@ -21,6 +21,8 @@ namespace Jabalpur_Office.ServiceCore
         DataTable ExecProc(string procName);
         DataTable ExecDtText(string procName, SqlParameter[] parameters=null);
 
+        
+
 
     }
 }
