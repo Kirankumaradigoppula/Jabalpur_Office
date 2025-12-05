@@ -841,9 +841,15 @@ namespace Jabalpur_Office.Helpers
                         }
                         else
                         {
-                              searchWhere.AppendFormat(
-                                        " AND (VIS_MOBNO LIKE '%{0}%' OR VIS_ALTR_MOBNO LIKE '%{0}%')",
-                               EscapeSqlLike(fieldValue)
+                            // searchWhere.AppendFormat(
+                            //           " AND (VIS_MOBNO LIKE '%%{0}%%' OR VIS_ALTR_MOBNO LIKE '%%{0}%%')",
+                            //  EscapeSqlLike(fieldValue)
+                            //  );
+
+                            searchWhere.AppendFormat(
+                                   " AND {0} LIKE N'%{1}%'",
+                                   fieldName,
+                                   EscapeSqlLike(fieldValue)
                                );
                         }
                         break;
