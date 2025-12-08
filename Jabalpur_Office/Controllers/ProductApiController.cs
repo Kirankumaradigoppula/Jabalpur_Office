@@ -569,11 +569,21 @@ namespace Jabalpur_Office.Controllers
                     pageSize: pageSize
                 );
 
-                DataTable dt = _core.ExecProcDt("ReactConstructionWorkDetails", paramList.ToArray());
+                //DataTable dt = _core.ExecProcdt("ReactConstructionWorkDetails", paramList.ToArray());
+                //ApiHelper.SetDataTableListOutput(dt, outObj);
 
-               
-                ApiHelper.SetDataTableListOutput(dt, outObj);
+                DataSet ds = _core.ExecProcDs("ReactConstructionWorkDetails", paramList.ToArray());
+
+
+                ApiHelper.SetDataTableListOutput(ds.Tables[0], outObj);
                 SetOutput(pStatus, pMsg, outObj);
+
+                // COLUMN LIST (Table 1)
+                if (ds.Tables.Count > 1 && ds.Tables[1] != null && ds.Tables[1].Rows.Count > 0)
+                {
+                    outObj.ExtraData["COLUMN_LIST"] =
+                       ds.Tables[1].Rows[0]["COLUMN_JSON"]?.ToString() ?? "[]";
+                }
 
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
@@ -5878,7 +5888,6 @@ namespace Jabalpur_Office.Controllers
             }, nameof(CrudVisitorWorkStatusDetails), out _, skipTokenCheck: false));
         }
 
-
         [HttpPost("GetDistrictMasDetails")]
         public IActionResult GetDistrictMasDetails([FromBody] object input)
         {
@@ -6638,6 +6647,104 @@ namespace Jabalpur_Office.Controllers
         }
 
 
+
+        [HttpPost("GetReasonDetailsFormFieldData")]
+        public IActionResult GetReasonDetailsFormFieldData([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: false,
+                    includeWhere: false
+
+                );
+
+                var pFORM_IS_DISABLE = new SqlParameter("@pFORM_IS_DISABLE", SqlDbType.VarChar,500)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(pFORM_IS_DISABLE);
+
+                DataTable dt = _core.ExecProcDt("ReactReasonDetailsFormFieldData", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                // Read @pTotalAmount output value safely
+                if (pFORM_IS_DISABLE.Value != DBNull.Value)
+                {
+                    outObj.ExtraData["FORM_IS_DISABLE"] = Convert.ToString(pFORM_IS_DISABLE.Value);
+                }
+
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+
+            }, nameof(GetReasonDetailsFormFieldData), out _, skipTokenCheck: false));
+
+
+        }
+
+
+
+
+        [HttpPost("CrudVisitorReasonDetails")]
+        public IActionResult CrudVisitorReasonDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                   data: data,
+                   keys: filterKeys,
+                   mpSeatId: pJWT_MP_SEAT_ID,
+                   userId: pJWT_USERID,
+                   includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudVisitorReasonDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+
+                return outObj;
+
+            }, nameof(CrudVisitorReasonDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudDraftLetterHistoryDetails")]
+        public IActionResult CrudDraftLetterHistoryDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                   data: data,
+                   keys: filterKeys,
+                   mpSeatId: pJWT_MP_SEAT_ID,
+                   userId: pJWT_USERID,
+                   includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudDraftLetterHistoryDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+
+                return outObj;
+
+            }, nameof(CrudDraftLetterHistoryDetails), out _, skipTokenCheck: false));
+        }
+
         [HttpPost("CrudMailMasterDetails")]
         public IActionResult CrudMailMasterDetails([FromBody] object input)
         {
@@ -6731,6 +6838,37 @@ namespace Jabalpur_Office.Controllers
                 SetOutput(pStatus, pMsg, outObj);
                 return outObj;
             }, nameof(GetLetterPrintDetails), out _, skipTokenCheck: false));
+        }
+
+
+        //Its Letter Print -  Visitor Letter
+
+        [HttpPost("GetVisitorDetailsForLetterPrint")]
+        public IActionResult GetVisitorDetailsForLetterPrint([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: false
+
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactVisitorLetterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+            }, nameof(GetVisitorDetailsForLetterPrint), out _, skipTokenCheck: false));
         }
 
         [HttpPost("GetUniversalDropDownList")]
