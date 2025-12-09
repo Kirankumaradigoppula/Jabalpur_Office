@@ -5447,6 +5447,59 @@ namespace Jabalpur_Office.Controllers
         }
 
 
+        [HttpPost("CrudPrintLetterFormatDetails")]
+        public IActionResult CrudPrintLetterFormatDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudPrintLetterFormatDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudPrintLetterFormatDetails), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("CrudNotesheetLetterFormatDetails")]
+        public IActionResult CrudNotesheetLetterFormatDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudNotesheetLetterFormatDetails", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudNotesheetLetterFormatDetails), out _, skipTokenCheck: false));
+
+        }
+
+
         [HttpPost("CrudContactBook")]
         public IActionResult CrudContactBook([FromBody] object input)
         {
@@ -6869,6 +6922,34 @@ namespace Jabalpur_Office.Controllers
                 SetOutput(pStatus, pMsg, outObj);
                 return outObj;
             }, nameof(GetVisitorDetailsForLetterPrint), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("GetDetailsForNoteSheetLetterPrint")]
+        public IActionResult GetDetailsForNoteSheetLetterPrint([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: false,
+                    includeWhere: false
+
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactNotesheetLetterDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+            }, nameof(GetDetailsForNoteSheetLetterPrint), out _, skipTokenCheck: false));
         }
 
         [HttpPost("GetUniversalDropDownList")]
