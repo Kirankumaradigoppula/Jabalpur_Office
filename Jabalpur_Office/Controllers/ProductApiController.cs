@@ -4526,7 +4526,7 @@ namespace Jabalpur_Office.Controllers
             {
                 var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
                 var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
-                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                var filterKeys = ApiHelper.GetFilteredKeys(data); 
 
                 // Step 2: Build SQL parameters (advanced dynamic approach)
                 var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
