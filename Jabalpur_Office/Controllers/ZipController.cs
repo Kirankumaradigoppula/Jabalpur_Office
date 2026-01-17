@@ -248,7 +248,7 @@ namespace Jabalpur_Office.Controllers
                 {
                     foreach (var col in fileColumns)
                     {
-                        string rel = Convert.ToString(row[col])?.Trim();
+                        string? rel = Convert.ToString(row[col])?.Trim();
                         if (!string.IsNullOrEmpty(rel))
                         {
                             string fullPath = Path.Combine(storageRoot,
