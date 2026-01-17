@@ -574,8 +574,8 @@ namespace Jabalpur_Office.Controllers
 
                 DataSet ds = _core.ExecProcDs("ReactConstructionWorkDetails", paramList.ToArray());
 
-
-                ApiHelper.SetDataTableListOutput(ds.Tables[0], outObj);
+                DataTable dt = (ds != null && ds.Tables.Count > 0) ? ds.Tables[0] : new DataTable();
+                ApiHelper.SetDataTableListOutput(dt, outObj); //ds.Tables[0]
                 SetOutput(pStatus, pMsg, outObj);
 
                 // COLUMN LIST (Table 1)
@@ -2733,7 +2733,7 @@ namespace Jabalpur_Office.Controllers
                             {
                                 System.IO.File.Delete(fullFilePath);
                                 // ✅ Step 2: Check parent folder
-                                string parentFolder = Path.GetDirectoryName(fullFilePath);
+                                string? parentFolder = Path.GetDirectoryName(fullFilePath);
                                 if (!string.IsNullOrWhiteSpace(parentFolder) &&
                                          Directory.Exists(parentFolder) &&
                                         !Directory.EnumerateFileSystemEntries(parentFolder).Any())
@@ -4856,8 +4856,8 @@ namespace Jabalpur_Office.Controllers
                 //ApiHelper.SetDataTableListOutput(dt, outObj);
 
                 DataSet ds = _core.ExecProcDs("ReactMpProgrammeDetails", paramList.ToArray());
-                
-                ApiHelper.SetDataTableListOutput(ds.Tables[0], outObj);
+                DataTable dt = (ds != null && ds.Tables.Count > 0) ? ds.Tables[0] : new DataTable();
+                ApiHelper.SetDataTableListOutput(dt, outObj); //ds.Tables[0]
 
                 //SetOutput(pStatus, pMsg, outObj);
 
@@ -5874,7 +5874,7 @@ namespace Jabalpur_Office.Controllers
                             {
                                 System.IO.File.Delete(fullFilePath);
                                 // ✅ Step 2: Check parent folder
-                                string parentFolder = Path.GetDirectoryName(fullFilePath);
+                                string? parentFolder = Path.GetDirectoryName(fullFilePath);
                                 if (!string.IsNullOrWhiteSpace(parentFolder) &&
                                          Directory.Exists(parentFolder) &&
                                         !Directory.EnumerateFileSystemEntries(parentFolder).Any())
@@ -6697,8 +6697,8 @@ namespace Jabalpur_Office.Controllers
                 //ApiHelper.SetDataTableListOutput(dt, outObj);
 
                  DataSet ds = _core.ExecProcDs("ReactVisitorWorkDetails", paramList.ToArray());
-                
-                 ApiHelper.SetDataTableListOutput(ds.Tables[0], outObj);
+                DataTable dt = (ds != null && ds.Tables.Count > 0) ? ds.Tables[0] : new DataTable();
+                ApiHelper.SetDataTableListOutput(dt, outObj); //ds.Tables[0]
 
 
                 SetOutput(pStatus, pMsg, outObj);
@@ -6812,9 +6812,6 @@ namespace Jabalpur_Office.Controllers
 
 
         }
-
-
-
 
         [HttpPost("CrudVisitorReasonDetails")]
         public IActionResult CrudVisitorReasonDetails([FromBody] object input)
@@ -7202,6 +7199,72 @@ namespace Jabalpur_Office.Controllers
 
                 return outObj;
             }, nameof(GetVoterIdCardDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudVoterCardDetails")]
+        public IActionResult CrudVoterCardDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: false
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudVoterCardDetails", paramList.ToArray());
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+
+            }, nameof(CrudVoterCardDetails), out _, skipTokenCheck: false));
+
+
+        }
+
+        [HttpPost("GetVoterListDetails")]
+        public IActionResult GetVoterListDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Extract search, paging
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactVoterListDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ✅ Apply pagination only if both values are set
+                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+                {
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                return outObj;
+            }, nameof(GetVoterListDetails), out _, skipTokenCheck: false));
         }
 
 
