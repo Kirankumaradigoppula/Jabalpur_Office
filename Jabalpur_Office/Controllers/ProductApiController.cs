@@ -31,6 +31,12 @@ using static System.Net.WebRequestMethods;
 using Org.BouncyCastle.Ocsp;
 using Microsoft.AspNetCore.Rewrite;
 using Org.BouncyCastle.Asn1.Cmp;
+using UAParser;
+using UAParser.Objects;
+using System.Security.Cryptography;
+
+
+
 
 namespace Jabalpur_Office.Controllers
 {
@@ -49,13 +55,50 @@ namespace Jabalpur_Office.Controllers
         private readonly IWebHostEnvironment _env;
 
         private readonly StorageSettings _settings;
-        public ProductApiController(AppDbContext context, IsssCore core, JwtTokenHelper jwtToken, IWebHostEnvironment env, IOptions<StorageSettings> settings) : base(context, core, jwtToken, settings)
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        public ProductApiController(AppDbContext context, IsssCore core, JwtTokenHelper jwtToken, IWebHostEnvironment env, IOptions<StorageSettings> settings, IHttpContextAccessor httpContextAccessor) : base(context, core, jwtToken, settings, httpContextAccessor)
         {
             _context = context;
             _core = core;
             _jwtTokenHelper = jwtToken;
             _env = env;
             _settings = settings.Value;
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        [AllowAnonymous]
+        [HttpPost("DomainWiseClientDetails")] // Cleaner route syntax
+        public IActionResult DomainWiseClientDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                // 1. Prepare wrapper & raw data
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                // 2. Convert to object dictionary
+                var data = ApiHelper.ToObjectDictionary(rawData);
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // 3. Build SQL parameters
+                var (paramList, pStatus, pMsg, _, _) =
+                    SqlParamBuilderWithAdvanced.BuildAdvanced(
+                        data: data,
+                        keys: filterKeys,
+                        includeTotalCount: false,
+                        includeWhere: false
+                    );
+                // 4. Execute stored procedure
+                DataTable dt = _core.ExecProcDt("ReactDomainWiseClientDetails", paramList.ToArray());
+
+                // 5. Convert to output wrapper
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+
+                // 6. Set output message + status
+                SetOutput(pStatus, pMsg, outObj);
+
+                return outObj;
+
+            }, nameof(DomainWiseClientDetails), out _, skipTokenCheck: true));
         }
 
         //1.
@@ -133,6 +176,35 @@ namespace Jabalpur_Office.Controllers
                     {
                         item["LOGIN_JWT_TOKEN"] = jwtToken;
                     }
+                    if (!string.IsNullOrEmpty(jwtToken) &&
+                        string.Equals(dt.Rows[0]["OTP_SMS_STATUS"]?.ToString(), "Y", StringComparison.OrdinalIgnoreCase))
+                    {
+
+                        var smsObject = new Dictionary<string, object>
+                        {
+                            ["TEMPLATE_NAME"] = "OTP_SMS_API",
+                            ["MOBNO_LIST"] = Convert.ToString(dt.Rows[0]["MOBILENO"]) ?? string.Empty,
+                            ["USERID"] = Convert.ToString(dt.Rows[0]["USERID"]) ?? string.Empty,
+                            ["MP_SEAT_ID"] = Convert.ToString(dt.Rows[0]["MP_SEAT_ID"]) ?? string.Empty
+                        };
+
+                        //var smsResult = await SendSMSService(smsObject);
+
+                        WrapperListData smsResult =
+                             Task.Run(() => SendSMSService(smsObject))
+                                 .GetAwaiter()
+                                 .GetResult();
+
+                        if (smsResult?.ExtraData != null &&
+                          smsResult.ExtraData.TryGetValue("SMS_SERVICE_DETAILS", out var smsDetails))
+                        {
+                            // Option 1: Pass-through to parent response
+                            outObj.ExtraData["SMS_SERVICE_DETAILS"] = smsDetails;
+                            outObj.ExtraData["SMS_MESSAGE"] = smsResult?.Message ?? string.Empty; ;
+
+                        }
+
+                    }
                 }
 
                 return outObj;
@@ -141,213 +213,372 @@ namespace Jabalpur_Office.Controllers
             }, nameof(validateUser), out _, skipTokenCheck: true));
         }
 
-        [HttpPost]
-        [Route("GetOTP")] //3.
-        public async Task<IActionResult> GetOTP([FromBody] OtpRequest input)
-        {
-            return await ExecuteWithHandlingAsync(async () =>
-            {
-                var (outObj, data) = PrepareWrapperAndData<WrapperObjectData>(input);
+        //[HttpPost]
+        //[Route("GetOTP")] //3.
+        //public async Task<IActionResult> GetOTP([FromBody] OtpRequest input)
+        //{
+        //    return await ExecuteWithHandlingAsync(async () =>
+        //    {
+        //        var (outObj, data) = PrepareWrapperAndData<WrapperObjectData>(input);
 
-                // Get parameters
-                var values = ApiHelper.ToObjectDictionary(data);
-                string pROLE = values.ContainsKey("ROLE") ? values["ROLE"]?.ToString() ?? "" : "";
-                string pMOBNO = values.ContainsKey("MOBNO") ? values["MOBNO"]?.ToString() ?? "" : "";
+        //        // Get parameters
+        //        var values = ApiHelper.ToObjectDictionary(data);
+        //        string pROLE = values.ContainsKey("ROLE") ? values["ROLE"]?.ToString() ?? "" : "";
+        //        string pMOBNO = values.ContainsKey("MOBNO") ? values["MOBNO"]?.ToString() ?? "" : "";
 
-                // Get OTP_SMS_STATUS from DB
-                string pQry = "SELECT DISTINCT OTP_SMS_STATUS FROM MP_SEATS WHERE MP_SEAT_ID = @MP_SEAT_ID";
+        //        // Get OTP_SMS_STATUS from DB
+        //        string pQry = "SELECT DISTINCT OTP_SMS_STATUS FROM MP_SEATS WHERE MP_SEAT_ID = @MP_SEAT_ID";
 
-                string smsOtpStatus = Convert.ToString(
-                    await _core.ExecScalarAsync(
-                        pQry,
-                         new[] { new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID) }
-                    )
-                 );
+        //        string smsOtpStatus = Convert.ToString(
+        //            await _core.ExecScalarAsync(
+        //                pQry,
+        //                 new[] { new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID) }
+        //            )
+        //         );
 
-                Dictionary<string, string> resultData = new();
+        //        Dictionary<string, string> resultData = new();
 
-                if (!string.IsNullOrEmpty(pROLE) && (pROLE.Contains("GUEST") || pROLE.Contains("ADMIN")))
-                {
-                    if (smsOtpStatus == "Y")
-                    {
-                        string generatedOtp = new Random().Next(0, 999999).ToString("D6");
+        //        if (!string.IsNullOrEmpty(pROLE) && (pROLE.Contains("GUEST") || pROLE.Contains("ADMIN")))
+        //        {
+        //            if (smsOtpStatus == "Y")
+        //            {
+        //                string generatedOtp = new Random().Next(0, 999999).ToString("D6");
 
-                        if (!string.IsNullOrEmpty(generatedOtp) && !string.IsNullOrEmpty(pMOBNO))
-                        {
-                            string sendResult = await SendOTPAsync(pMOBNO, pJWT_LOGIN_NAME, generatedOtp, "SEND", pROLE, pJWT_MP_SEAT_ID);
-                            try
-                            {
-                                var pMessage = new SqlParameter("@pMessage", SqlDbType.VarChar, 500)
-                                {
-                                    Direction = ParameterDirection.Output
-                                };
-                                var pStatusCode = new SqlParameter("@pStatusCode", SqlDbType.Int)
-                                {
-                                    Direction = ParameterDirection.Output
-                                };
+        //                if (!string.IsNullOrEmpty(generatedOtp) && !string.IsNullOrEmpty(pMOBNO))
+        //                {
+        //                    string sendResult = await SendOTPAsync(pMOBNO, pJWT_LOGIN_NAME, generatedOtp, "SEND", pROLE, pJWT_MP_SEAT_ID);
+        //                    try
+        //                    {
+        //                        var pMessage = new SqlParameter("@pMessage", SqlDbType.VarChar, 500)
+        //                        {
+        //                            Direction = ParameterDirection.Output
+        //                        };
+        //                        var pStatusCode = new SqlParameter("@pStatusCode", SqlDbType.Int)
+        //                        {
+        //                            Direction = ParameterDirection.Output
+        //                        };
 
-                                List<SqlParameter> paramList = new()
-                                 {
-                                     new SqlParameter("@pROLE", pROLE),
-                                     new SqlParameter("@pMOBNO", pMOBNO),
-                                     new SqlParameter("@pLoginOTP", generatedOtp),
-                                     new SqlParameter("@pMP_SEAT_ID", pJWT_MP_SEAT_ID),
-                                     pMessage,
-                                     pStatusCode
-                                 };
-                                await _core.ExecQryAsync("ReactUpdateOTP", paramList.ToArray());
+        //                        List<SqlParameter> paramList = new()
+        //                         {
+        //                             new SqlParameter("@pROLE", pROLE),
+        //                             new SqlParameter("@pMOBNO", pMOBNO),
+        //                             new SqlParameter("@pLoginOTP", generatedOtp),
+        //                             new SqlParameter("@pMP_SEAT_ID", pJWT_MP_SEAT_ID),
+        //                             pMessage,
+        //                             pStatusCode
+        //                         };
+        //                        await _core.ExecQryAsync("ReactUpdateOTP", paramList.ToArray());
 
-                                resultData["OTP"] = generatedOtp;
-                                resultData["Status"] = pStatusCode.Value?.ToString() == "200" ? "SUCCESS" : "FAILED";
-                                resultData["Message"] = pMessage.Value?.ToString() ?? "OTP processed.";
-                                resultData["StatusCode"] = pStatusCode.Value?.ToString() ?? "200";
-                            }
-                            catch (Exception Ex)
-                            {
-                                resultData["Status"] = "FAILED";
-                                resultData["Message"] = $"Error saving OTP: {Ex.Message}";
-                                resultData["StatusCode"] = "500";
-                            }
+        //                        resultData["OTP"] = generatedOtp;
+        //                        resultData["Status"] = pStatusCode.Value?.ToString() == "200" ? "SUCCESS" : "FAILED";
+        //                        resultData["Message"] = pMessage.Value?.ToString() ?? "OTP processed.";
+        //                        resultData["StatusCode"] = pStatusCode.Value?.ToString() ?? "200";
+        //                    }
+        //                    catch (Exception Ex)
+        //                    {
+        //                        resultData["Status"] = "FAILED";
+        //                        resultData["Message"] = $"Error saving OTP: {Ex.Message}";
+        //                        resultData["StatusCode"] = "500";
+        //                    }
 
-                        }
-                        else
-                        {
-                            resultData["Status"] = "FAILED";
-                            resultData["Message"] = "Missing mobile number or OTP generation failed.";
-                            resultData["StatusCode"] = "422";
-                        }
-                    }
-                    else
-                    {
-                        resultData["Status"] = "FAILED";
-                        resultData["Message"] = "OTP sending not enabled.";
-                        resultData["StatusCode"] = "403";
-                    }
-                }
-                else
-                {
-                    resultData["Status"] = "FAILED";
-                    resultData["Message"] = "Access denied: Invalid login role.";
-                    resultData["StatusCode"] = "403";
-                }
+        //                }
+        //                else
+        //                {
+        //                    resultData["Status"] = "FAILED";
+        //                    resultData["Message"] = "Missing mobile number or OTP generation failed.";
+        //                    resultData["StatusCode"] = "422";
+        //                }
+        //            }
+        //            else
+        //            {
+        //                resultData["Status"] = "FAILED";
+        //                resultData["Message"] = "OTP sending not enabled.";
+        //                resultData["StatusCode"] = "403";
+        //            }
+        //        }
+        //        else
+        //        {
+        //            resultData["Status"] = "FAILED";
+        //            resultData["Message"] = "Access denied: Invalid login role.";
+        //            resultData["StatusCode"] = "403";
+        //        }
 
-                // Set Output
-                outObj.DataObject = resultData;
-                outObj.StatusCode = int.Parse(resultData["StatusCode"]);
-                outObj.Message = resultData["Message"];
+        //        // Set Output
+        //        outObj.DataObject = resultData;
+        //        outObj.StatusCode = int.Parse(resultData["StatusCode"]);
+        //        outObj.Message = resultData["Message"];
 
-                return outObj.StatusCode switch
-                {
-                    200 => Ok(outObj),
-                    403 => Forbid(),
-                    422 => UnprocessableEntity(outObj),
-                    _ => BadRequest(outObj)
-                };
+        //        return outObj.StatusCode switch
+        //        {
+        //            200 => Ok(outObj),
+        //            403 => Forbid(),
+        //            422 => UnprocessableEntity(outObj),
+        //            _ => BadRequest(outObj)
+        //        };
 
-            }, "GetOTP", skipTokenCheck: false);
-        }
+        //    }, "GetOTP", skipTokenCheck: false);
+        //}
 
 
-        [HttpPost]
-        [Route("SendOTPAsync")]//4.
-        public async Task<string> SendOTPAsync(string pMobileNo, string pUserName, string pOTP, string pMode, string pLoginAs, string pMpSeatId)
-        {
-            int sentMsgs = 0;
-            int notSentMsgs = 0;
-            var logOutput = new StringBuilder();
+        //[HttpPost]
+        //[Route("SendOTPAsync")]//4.
+        //public async Task<string> SendOTPAsync(string pMobileNo, string pUserName, string pOTP, string pMode, string pLoginAs, string pMpSeatId)
+        //{
+        //    int sentMsgs = 0;
+        //    int notSentMsgs = 0;
+        //    var logOutput = new StringBuilder();
 
-            try
-            {
-                string query = "SELECT DISTINCT OTP_SMS_API FROM MP_SEATS WHERE MP_SEAT_ID = @MP_SEAT_ID";
-                string? smsApiUrl = Convert.ToString(await _core.ExecScalarAsync(query,
-                    new[] { new SqlParameter("@MP_SEAT_ID", pMpSeatId) }));
+        //    try
+        //    {
+        //        string query = "SELECT DISTINCT OTP_SMS_API FROM MP_SEATS WHERE MP_SEAT_ID = @MP_SEAT_ID";
+        //        string? smsApiUrl = Convert.ToString(await _core.ExecScalarAsync(query,
+        //            new[] { new SqlParameter("@MP_SEAT_ID", pMpSeatId) }));
 
-                if (!string.IsNullOrEmpty(smsApiUrl))
-                {
-                    string finalUrl = smsApiUrl
-                        .Replace("{0}", Uri.EscapeDataString(pMobileNo))
-                        .Replace("{1}", Uri.EscapeDataString(pOTP))
-                        .Replace("{3}", Uri.EscapeDataString(pLoginAs));
+        //        if (!string.IsNullOrEmpty(smsApiUrl))
+        //        {
+        //            string finalUrl = smsApiUrl
+        //                .Replace("{0}", Uri.EscapeDataString(pMobileNo))
+        //                .Replace("{1}", Uri.EscapeDataString(pOTP))
+        //                .Replace("{3}", Uri.EscapeDataString(pLoginAs));
 
-                    if (pMode == "SEND")
-                    {
-                        try
-                        {
-                            using var httpClient = new HttpClient();
-                            string response = await httpClient.GetStringAsync(finalUrl);
+        //            if (pMode == "SEND")
+        //            {
+        //                try
+        //                {
+        //                    using var httpClient = new HttpClient();
+        //                    string response = await httpClient.GetStringAsync(finalUrl);
 
-                            sentMsgs++;
-                            logOutput.AppendLine($"[SUCCESS] {finalUrl}");
-                            logOutput.AppendLine($"Response: {response}");
-                        }
-                        catch (HttpRequestException httpEx)
-                        {
-                            notSentMsgs++;
-                            logOutput.AppendLine($"[FAIL] {finalUrl}");
-                            logOutput.AppendLine($"Error: {httpEx.Message}");
-                            LogError(httpEx, "SendOTPAsync - HTTP request error");
-                        }
-                    }
-                }
-                else
-                {
-                    notSentMsgs++;
-                    logOutput.AppendLine("No SMS API URL found for the given MP Seat ID.");
-                }
-            }
-            catch (Exception ex)
-            {
-                logOutput.AppendLine($"[ERROR] Unexpected exception: {ex.Message}");
-                LogError(ex, "SendOTPAsync - General Exception");
-            }
+        //                    sentMsgs++;
+        //                    logOutput.AppendLine($"[SUCCESS] {finalUrl}");
+        //                    logOutput.AppendLine($"Response: {response}");
+        //                }
+        //                catch (HttpRequestException httpEx)
+        //                {
+        //                    notSentMsgs++;
+        //                    logOutput.AppendLine($"[FAIL] {finalUrl}");
+        //                    logOutput.AppendLine($"Error: {httpEx.Message}");
+        //                    LogError(httpEx, "SendOTPAsync - HTTP request error");
+        //                }
+        //            }
+        //        }
+        //        else
+        //        {
+        //            notSentMsgs++;
+        //            logOutput.AppendLine("No SMS API URL found for the given MP Seat ID.");
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        logOutput.AppendLine($"[ERROR] Unexpected exception: {ex.Message}");
+        //        LogError(ex, "SendOTPAsync - General Exception");
+        //    }
 
-            return $"Sent: {sentMsgs}, Failed: {notSentMsgs}\n{logOutput}";
-        }
+        //    return $"Sent: {sentMsgs}, Failed: {notSentMsgs}\n{logOutput}";
+        //}
 
         //5.
+        [AllowAnonymous]
         [HttpPost("VerifyOTP")]
         public IActionResult VerifyOTP([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
             {
                 // Step 1: Prepare output wrapper and input dictionary
-                var (outObj, rawData) = PrepareWrapperAndData<WrapperObjectData>(input ?? new { });
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
 
                 var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
-                var selectedKeys = data?.Keys ?? Enumerable.Empty<string>();
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
 
                 // Step 2: Build SQL parameters (advanced dynamic approach)
                 var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
                     data: data,
-                    keys: selectedKeys,
+                    keys: filterKeys,
                     mpSeatId: pJWT_MP_SEAT_ID,
+                     userId: pJWT_USERID,
                     includeTotalCount: false,
                     includeWhere: false
                 );
 
                 // Step 3: Execute stored procedure
                 DataTable dt = _core.ExecProcDt("ReactVerifyOTP", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+                if (outObj.StatusCode == 200)
+                {
+                    var context = _httpContextAccessor.HttpContext;
 
-                //var resultObject = new Dictionary<string, object>
-                //{
-                //    ["OTPStatus"] = new Dictionary<string, string>
-                //    {
-                //       { "StatusCode", pStatus?.Value?.ToString() ?? "500" },
-                //       { "Message", pMsg?.Value?.ToString() ?? "Internal Error" }
-                //    }
-                //};
+                    // JWT Token
+                    string? token = context?.Request.Headers["Authorization"]
+                      .FirstOrDefault()?.Replace("Bearer ", "").Trim();
 
-                //// Set result
-                //outObj.DataObject = resultObject;
-                outObj.StatusCode = int.Parse(pStatus.Value?.ToString() ?? "500");
-                outObj.Message = pMsg.Value?.ToString() ?? "Internal Error";
-               
-                return outObj;
+                    // Browser / UA
+                    string? browserInfo = context?.Request.Headers["User-Agent"].ToString();
+
+                    // IP Address
+                    string? forwardedHeader = context?.Request?.Headers["X-Forwarded-For"].FirstOrDefault();
+                    string? ipAddress = !string.IsNullOrEmpty(forwardedHeader)
+                        ? forwardedHeader //.Split(',')[0].Trim() // take first IP
+                        : context?.Connection?.RemoteIpAddress?.ToString();
+
+                    // UAParser
+                    var parser = Parser.GetDefault();
+                    ClientInfo clientInfo = parser.Parse(browserInfo);
+
+                    // Browser
+                    string browserName = clientInfo.Browser.Family;
+                    string browserVersion = $"{clientInfo.Browser.Major}.{clientInfo.Browser.Minor}";
+
+                    // OS
+                    string deviceOS = clientInfo.OS.Family == "Windows" && clientInfo.OS.Major == "10"
+                    ? "Windows 10 / 11"
+                    : $"{clientInfo.OS.Family} {clientInfo.OS.Major}";
+
+                    // Device Type
+                    string deviceType;
+                    string userAgent = browserInfo ?? string.Empty;
+                    if (clientInfo.Device.IsSpider)
+                    {
+                        deviceType = "Bot";
+                    }
+                    else if (userAgent.ToLower().Contains("mobile"))
+                    {
+                        deviceType = "Mobile";
+                    }
+                    else if (userAgent.ToLower().Contains("tablet"))
+                    {
+                        deviceType = "Tablet";
+                    }
+                    else
+                    {
+                        deviceType = "Desktop";
+                    }
+
+                    string rawDeviceData = $"{ipAddress} - {userAgent} - {browserName} - {deviceOS}";
+
+                    string deviceId;
+                    using (SHA256 sha = SHA256.Create())
+                    {
+                        byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(rawDeviceData));
+                        deviceId = Convert.ToBase64String(hash);
+                    }
+
+
+                    data["FLAG"] = "LOGIN";
+                    data["TOKEN"] = token ?? string.Empty;
+                    data["IP_ADDRESS"] = ipAddress ?? string.Empty;
+                    data["BROWSER_INFO"] = browserInfo ?? string.Empty;
+                    data["DEVICE_ID"] = deviceId;
+                    data["DEVICE_TYPE"] = deviceType;
+                    data["BROWSER_NAME"] = browserName;
+                    data["BROWSER_VERSION"] = browserVersion;
+                    data["DEVICE_OS"] = deviceOS;
+                    data["RAW_DEVICE_DATA"] = rawDeviceData;
+                    data["LOGIN_STATUS"] = "SUCCESS";
+                    data["ENTRY_FROM"] = "PORTAL";
+                    string updatedInput = JsonConvert.SerializeObject(data);
+
+                    var LoginHistoryResult = CrudPortalLoginHistory(updatedInput) as ObjectResult;
+
+                    // Merge status/message if needed
+                    if (LoginHistoryResult?.Value is WrapperCrudObjectData imgOut)
+                    {
+                        string VisdbMsg = outObj.Message ?? string.Empty;
+                        string fileMsg = (imgOut.Message != null && imgOut.Message.Any())
+                         ? string.Join(" | ", imgOut.Message)
+                         : string.Empty;
+
+
+                        outObj.Message = string.IsNullOrWhiteSpace(VisdbMsg) ? fileMsg : $"{VisdbMsg} | {fileMsg}";
+
+                    }
+
+                }
+
+
+             return outObj;
 
             }, nameof(VerifyOTP), out _, skipTokenCheck: false));
         }
 
-       
+        [HttpPost("CrudPortalLoginHistory")] //4.
+        public IActionResult CrudPortalLoginHistory([FromForm] string input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+
+                // Step 1: Sanitize input JSON
+                if (!string.IsNullOrEmpty(input))
+                {
+                    var jObj = Newtonsoft.Json.Linq.JObject.Parse(input);
+                    jObj.Remove("MOBNO");
+                    jObj.Remove("LOGIN_OTP");
+                    input = jObj.ToString();
+                }
+
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                 string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+               );
+
+                var allowedKeys = new[] { "FLAG", "TOKEN", "BROWSER_INFO", "IP_ADDRESS", "DEVICE_ID",
+                  "DEVICE_TYPE","BROWSER_NAME","BROWSER_VERSION","DEVICE_OS","RAW_DEVICE_DATA",
+                  "LOGIN_STATUS","ENTRY_FROM"
+                };
+
+                var data = ApiHelper.ToObjectDictionary(rawData);
+
+                var selectedData = data
+                            .Where(kvp => allowedKeys.Contains(kvp.Key))
+                            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+
+
+                var filterKeys = ApiHelper.GetFilteredKeys(selectedData);
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: selectedData,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: false
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudPortalLoginHistoryDetails", paramList.ToArray());
+                SetOutput(pStatus, pMsg, outObj);
+
+                return outObj;
+            }, nameof(CrudPortalLoginHistory), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("Logout")] //5.
+        public IActionResult Logout([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    userId: pJWT_USERID,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: false,
+                    includeWhere: false
+
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudPortalLoginHistoryDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+                return outObj;
+            }, nameof(Logout), out _, skipTokenCheck: false));
+        }
+
 
         [HttpPost("GetWebPortalUserMenuRights")]
         public IActionResult GetWebPortalUserMenuRights([FromBody] object input)
@@ -4816,6 +5047,7 @@ namespace Jabalpur_Office.Controllers
                     data: data,
                     keys: filterKeys,
                     mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
                     includeTotalCount: true,
                     includeWhere: true
                 );
@@ -5892,43 +6124,43 @@ namespace Jabalpur_Office.Controllers
             }, nameof(CrudVisitorOutwardDocumentDetails), out _, skipTokenCheck: false));
         }
 
-        [HttpPost("GetDispatchLetterDetails")]
-        public IActionResult GetDispatchLetterDetails([FromBody] object input)
-        {
-            return Ok(ExecuteWithHandling(() =>
-            {
-                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
-                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
-                var filterKeys = ApiHelper.GetFilteredKeys(data);
+        //[HttpPost("GetDispatchLetterDetails")]
+        //public IActionResult GetDispatchLetterDetails([FromBody] object input)
+        //{
+        //    return Ok(ExecuteWithHandling(() =>
+        //    {
+        //        var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+        //        var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+        //        var filterKeys = ApiHelper.GetFilteredKeys(data);
 
-                // Extract search, paging
-                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+        //        // Extract search, paging
+        //        var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
 
-                // Step 2: Build SQL parameters (advanced dynamic approach)
-                var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
-                    data: data,
-                    keys: filterKeys,
-                    mpSeatId: pJWT_MP_SEAT_ID,
-                    includeTotalCount: true,
-                    includeWhere: true,
-                    pageIndex: pageIndex,
-                    pageSize: pageSize
-                );
+        //        // Step 2: Build SQL parameters (advanced dynamic approach)
+        //        var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+        //            data: data,
+        //            keys: filterKeys,
+        //            mpSeatId: pJWT_MP_SEAT_ID,
+        //            includeTotalCount: true,
+        //            includeWhere: true,
+        //            pageIndex: pageIndex,
+        //            pageSize: pageSize
+        //        );
 
-                DataTable dt = _core.ExecProcDt("ReactDispatchLetterDetails", paramList.ToArray());
-                ApiHelper.SetDataTableListOutput(dt, outObj);
-                SetOutput(pStatus, pMsg, outObj);
+        //        DataTable dt = _core.ExecProcDt("ReactDispatchLetterDetails", paramList.ToArray());
+        //        ApiHelper.SetDataTableListOutput(dt, outObj);
+        //        SetOutput(pStatus, pMsg, outObj);
 
-                // ✅ Apply pagination only if both values are set
-                if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
-                {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
-                }
+        //        // ✅ Apply pagination only if both values are set
+        //        if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+        //        {
+        //            PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+        //        }
 
-                return outObj;
+        //        return outObj;
 
-            }, nameof(GetDispatchLetterDetails), out _, skipTokenCheck: false));
-        }
+        //    }, nameof(GetDispatchLetterDetails), out _, skipTokenCheck: false));
+        //}
 
 
         [HttpPost("GetVisitorWorkStatusDetails")]
@@ -6213,14 +6445,14 @@ namespace Jabalpur_Office.Controllers
                     }
 
                     // Validate file size (max 2MB)
-                    double fileSizeInMB = file.Length / 1024.0 / 1024.0;
-                    if (fileSizeInMB > 2)
-                    {
-                        outObj.StatusCode = 400;
-                        outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
-                        outObj.LoginStatus = pJWT_LOGIN_NAME;
-                        return outObj;
-                    }
+                    //double fileSizeInMB = file.Length / 1024.0 / 1024.0;
+                    //if (fileSizeInMB > 2)
+                    //{
+                    //    outObj.StatusCode = 400;
+                    //    outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
+                    //    outObj.LoginStatus = pJWT_LOGIN_NAME;
+                    //    return outObj;
+                    //}
                 }
                 if (flag == "DELETE" || flag == "DELETE_IMAGE")
                 {
@@ -6271,14 +6503,14 @@ namespace Jabalpur_Office.Controllers
                         }
 
                         // Validate file size (max 2MB)
-                        double fileSizeInMB = file.Length / 1024.0 / 1024.0;
-                        if (fileSizeInMB > 2)
-                        {
-                            outObj.StatusCode = 400;
-                            outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
-                            outObj.LoginStatus = pJWT_LOGIN_NAME;
-                            return outObj;
-                        }
+                        //double fileSizeInMB = file.Length / 1024.0 / 1024.0;
+                        //if (fileSizeInMB > 2)
+                        //{
+                        //    outObj.StatusCode = 400;
+                        //    outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
+                        //    outObj.LoginStatus = pJWT_LOGIN_NAME;
+                        //    return outObj;
+                        //}
                         // Prepare storage paths
                         string storageRoot = _settings.BasePath;
                         string baseFolder = Path.Combine("image", $"MP_{pJWT_MP_SEAT_ID}", "visitorAttachedFiles");
@@ -6519,12 +6751,12 @@ namespace Jabalpur_Office.Controllers
                             return outObj;
                         }
 
-                        if (file.Length > 2 * 1024 * 1024)
-                        {
-                            outObj.StatusCode = 400;
-                            outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
-                            return outObj;
-                        }
+                        //if (file.Length > 2 * 1024 * 1024)
+                        //{
+                        //    outObj.StatusCode = 400;
+                        //    outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
+                        //    return outObj;
+                        //}
 
                         string storageRoot = _settings.BasePath;
                         string baseFolder = Path.Combine("image", $"MP_{pJWT_MP_SEAT_ID}", "visitorAttachedFiles");
@@ -7562,8 +7794,8 @@ namespace Jabalpur_Office.Controllers
 
 
 
-        [HttpPost("SendSMSService")]
-        public async Task<WrapperListData> SendSMSService([FromBody] object input)
+        [HttpPost("SendSMSService123")]
+        public async Task<WrapperListData> SendSMSService123([FromBody] object input)
         {
 
             var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
@@ -7689,6 +7921,373 @@ namespace Jabalpur_Office.Controllers
 
 
         }
+
+        [HttpPost("CrudGoogleDraftLetterSettings")]
+        public IActionResult CrudGoogleDraftLetterSettings([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: true
+                );
+
+                DataTable dt = _core.ExecProcDt("ReactCrudGoogleDraftLetterSettings", paramList.ToArray());
+                SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+                return outObj;
+
+            }, nameof(CrudGoogleDraftLetterSettings), out _, skipTokenCheck: false));
+
+        }
+
+        [HttpPost("GetGoogleDraftLetterSettings")] //152.
+        public IActionResult GetGoogleDraftLetterSettings([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                return ExecuteUniversalList(input, "ReactGoogleDraftLetterSettings");
+
+            }, nameof(GetGoogleDraftLetterSettings), out _, skipTokenCheck: false));
+        }
+
+       
+        
+        [HttpPost("GetUniversalEventMobileList")] 
+        public IActionResult GetUniversalEventMobileList([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                return ExecuteUniversalList(input, "ReactUniversalEventMobileList");
+
+            }, nameof(GetUniversalEventMobileList), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("GetSMSTemplateMasterDetails")] 
+        public IActionResult GetSMSTemplateMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+
+                return ExecuteUniversalList(input, "ReactSMSTemplateMasterDetails");
+
+            }, nameof(GetSMSTemplateMasterDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudSMSTemplateMasterDetails")] 
+        public IActionResult CrudSMSTemplateMasterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                return ExecuteUniversalCrudWithRetId(input, "ReactCrudSMSTemplateMasterDetails");
+
+            }, nameof(CrudSMSTemplateMasterDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("GetDispatchLetterDetails")]
+        public IActionResult GetDispatchLetterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                return ExecuteUniversalList(input, "ReactDispatchLetterDetails", new List<OutParamSpec>
+                     {
+                         new OutParamSpec
+                         {
+                             Name = "LAST_DISPATCH_NO",
+                             Type = SqlDbType.VarChar,
+                             Size = 10
+                         }
+                      });
+
+            }, nameof(GetDispatchLetterDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("CrudDispatchLetterDetails")] //109.
+        public IActionResult CrudDispatchLetterDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                return ExecuteUniversalCrudWithRetId(input, "ReactCrudDispatchLetterDetails");
+
+            }, nameof(CrudDispatchLetterDetails), out _, skipTokenCheck: false));
+        }
+
+        [HttpPost("SendSMSService")]
+        [Authorize]
+        public async Task<WrapperListData> SendSMSService([FromBody] object input)
+        {
+
+            var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+            // ---------------------------------------------
+            // STEP 2: Convert input to Dictionary
+            // ---------------------------------------------
+            var data = ApiHelper.ToObjectDictionary(rawData);
+
+            string pTEMPLATE_NAME = data.ContainsKey("TEMPLATE_NAME") ? data["TEMPLATE_NAME"]?.ToString() ?? "" : "";
+
+            // ✅ Resolve IDs (JWT → Body fallback)
+            string? mpSeatId = ResolveValue(pJWT_MP_SEAT_ID, data, "MP_SEAT_ID");
+            string? userId = ResolveValue(pJWT_USERID, data, "USERID");
+
+            
+
+            // 3️⃣ Remove MP_SEAT_ID and USERID from dictionary (so they don't repeat)
+            data.Remove("MP_SEAT_ID");
+            data.Remove("USERID");
+
+            string pUNIVERSAL_MESSAGE = data.ContainsKey("UNIVERSAL_MESSAGE") ? data["UNIVERSAL_MESSAGE"]?.ToString() ?? "" : "";
+            var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+
+
+            // Step 2: Build SQL parameters (advanced dynamic approach)
+            var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                data: data,
+                keys: filterKeys,
+                mpSeatId: mpSeatId,
+                userId: userId,
+                includeTotalCount: false,
+                includeWhere: false
+            );
+
+            // OUTPUT -  DAILY SMS TYPE (STRING)
+            SqlParameter pDAILY_SMS_TYPE = new SqlParameter("@pDAILY_SMS_TYPE", SqlDbType.NVarChar, 200);
+            pDAILY_SMS_TYPE.Direction = ParameterDirection.Output;
+            paramList.Add(pDAILY_SMS_TYPE);
+
+            DataTable dt = _core.ExecProcDt("ReactSMSServiceDetails", paramList.ToArray());
+            ApiHelper.SetDataTableListOutput(dt, outObj);
+            SetOutput(pStatus, pMsg, outObj);
+
+            // -----------------------------
+            // SMS Sending Logic
+            // -----------------------------
+            if (outObj.StatusCode != 200 || dt == null || dt.Rows.Count == 0)
+                return outObj;
+
+            outObj.DataList = null;
+
+            string? smsApiUrl = Convert.ToString(dt.Rows[0]["SMS_API"]);
+            string? smsBalApiUrl = Convert.ToString(dt.Rows[0]["SMS_BALANCE_API"]);
+            string? dailySmsType = Convert.ToString(pDAILY_SMS_TYPE.Value);
+            string? smsBalanceValue = null;
+
+            if (!string.IsNullOrEmpty(smsBalApiUrl)) {
+                using var client = new HttpClient();
+                string jsonString = await client.GetStringAsync(smsBalApiUrl);
+                JObject jsonObject = JObject.Parse(jsonString);
+                smsBalanceValue = (string)jsonObject["balance"];
+
+            }
+
+            // ---------------------------------------------
+            // Resolve Mobile Numbers (Body → DT fallback)
+            // ---------------------------------------------
+            string mobNoList = string.Empty;
+            string masId = string.Empty;
+
+            if (data.TryGetValue("MOBNO_LIST", out var mobObj))
+                mobNoList = Convert.ToString(mobObj) ?? string.Empty;
+
+            if (data.TryGetValue("MAS_ID", out var masObj))
+                masId = Convert.ToString(masObj) ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(mobNoList) && dt.Columns.Contains("MOBNO_LIST"))
+                mobNoList = Convert.ToString(dt.Rows[0]["MOBNO_LIST"]) ?? string.Empty;
+
+            // 🔹 Clean & validate mobile numbers
+
+            List<string> mobileNumbers = mobNoList
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => x.Length == 10 && x.All(char.IsDigit))
+                .Distinct()
+                .ToList();
+
+            if (mobileNumbers.Count == 0)
+            {
+                outObj.StatusCode = 400;
+                outObj.Message = "No valid mobile numbers provided.";
+                outObj.LoginStatus = pJWT_LOGIN_NAME;
+                return outObj;
+            }
+            string mobileNoCsv = string.Join(",", mobileNumbers);
+            // ---------------------------------------------
+            // Send SMS
+            // ---------------------------------------------
+            int successCount = 0;
+            int failureCount = 0;
+
+            using var httpClient = new HttpClient();
+
+            // 🔹 SINGLE MOBILE (no foreach)
+            if (mobileNumbers.Count == 1)
+            {
+                string mobile = mobileNumbers[0];
+                try
+                {
+                    string finalUrl = smsApiUrl.Replace(
+                        "{MOBNO}",
+                        Uri.EscapeDataString(mobile)
+                    );
+
+                    HttpResponseMessage response = await httpClient.GetAsync(finalUrl);
+                    string content = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode && !string.IsNullOrEmpty(content))
+                    {
+                        content = content.Trim();
+
+                        bool isSuccess =
+                            long.TryParse(content, out _) ||   // numeric response (IMPORTANT)
+                            content.Contains("SUCCESS", StringComparison.OrdinalIgnoreCase) ||
+                            content.Contains("OK", StringComparison.OrdinalIgnoreCase) ||
+                            content.Contains("ACCEPTED", StringComparison.OrdinalIgnoreCase);
+                        if (isSuccess)
+                        {
+                            successCount = 1;
+                        }
+                        else
+                        {
+                            failureCount = 1;
+                        }
+                        
+                    }
+                    else
+                    {
+                        failureCount = 1;
+                    }
+
+                }
+                catch
+                {
+                    failureCount = 1;
+                }
+            }
+            else
+            {
+                // -----------------------------
+                // Batch SMS (1–1000 per request)
+                // -----------------------------
+                const int batchSize = 1000;
+
+                var batches = mobileNumbers
+                .Select((num, index) => new { num, index })
+                .GroupBy(x => x.index / batchSize)
+                .Select(g => g.Select(x => x.num).ToList())
+                .ToList();
+
+                foreach (var batch in batches)
+                {
+                    string batchMobiles = string.Join(",", batch);
+
+                    try
+                    {
+                        string finalUrl = smsApiUrl.Replace(
+                             "{MOBNO}",
+                             Uri.EscapeDataString(batchMobiles)
+                         );
+
+                        HttpResponseMessage response = await httpClient.GetAsync(finalUrl);
+                        string content = await response.Content.ReadAsStringAsync();
+
+                        if (response.IsSuccessStatusCode && !string.IsNullOrEmpty(content))
+                        {
+
+                            content = content.Trim();
+
+                            bool isSuccess =
+                                long.TryParse(content, out _) ||   // numeric response (IMPORTANT)
+                                content.Contains("SUCCESS", StringComparison.OrdinalIgnoreCase) ||
+                                content.Contains("OK", StringComparison.OrdinalIgnoreCase) ||
+                                content.Contains("ACCEPTED", StringComparison.OrdinalIgnoreCase);
+                            if (isSuccess)
+                            {
+                                successCount += batch.Count;
+                            }
+                            else
+                            {
+                                failureCount += batch.Count;
+                            }
+
+                        }
+                        else
+                        {
+                            failureCount += batch.Count;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failureCount += batch.Count;
+                    }
+                   
+                }
+            }
+
+            // -----------------------------
+            // Response Summary
+            // -----------------------------
+            int totalNumbers = mobileNumbers.Count;
+
+            // ---------------------------------------------
+            // Maintain SMS History
+            // ---------------------------------------------
+
+            string insertQry = $@"INSERT INTO DAILY_SMS_LOG_MASTER (MP_SEAT_ID,DAILY_SMS_TYPE,DAILY_SMS_TOTAL_COUNT,DAILY_SMS_MOBILE_NO_LIST,OTHER_TABLE_MAS_ID,UNIVERSAL_MESSAGE,SMS_API,SMS_BALANCE,SUCCESS_COUNT,FAILED_COUNT)
+             VALUES('{pJWT_MP_SEAT_ID}','{dailySmsType}','{totalNumbers}','{mobileNoCsv}','{masId}',N'{pUNIVERSAL_MESSAGE}',N'{smsApiUrl}','{smsBalanceValue}','{successCount}','{failureCount}')";
+
+            _core.ExecNonQuery(insertQry);
+
+            if (pTEMPLATE_NAME == "APPOINTMENT_SMS_API")
+            {
+                string vQryUpdateStatus = $@"
+                     UPDATE MP_APPOINTMENT 
+                     SET SMS_STATUS='Y'  
+                     WHERE MP_SEAT_ID='{pJWT_MP_SEAT_ID}' 
+                     AND APPOINTMENT_STATUS='ACCEPTED' 
+                     AND SMS_STATUS IS NULL
+                     AND (MOBNO IN ({string.Join(",", mobileNumbers.Select(m => $"'{m}'"))})
+                          OR ALTR_MOBNO IN ({string.Join(",", mobileNumbers.Select(m => $"'{m}'"))}))";
+                _core.ExecNonQuery(vQryUpdateStatus);
+
+            }
+
+
+            outObj.ExtraData["SMS_SERVICE_DETAILS"] = new
+            {
+                TotalNumbers = totalNumbers,
+                TotalSent = successCount,
+                TotalFailed = failureCount,
+                Message = $"SUCCESS: {successCount}, FAILED: {failureCount}, TOTAL: {totalNumbers}"
+            };
+
+
+
+            return outObj;
+        }
+
+        private static string? ResolveValue(
+   string? jwtValue,
+   Dictionary<string, object> data,
+   string key)
+        {
+            if (!string.IsNullOrWhiteSpace(jwtValue))
+                return jwtValue;
+
+            return data.TryGetValue(key, out var val)
+                ? Convert.ToString(val)
+                : null;
+        }
+
+
 
     }
 }
