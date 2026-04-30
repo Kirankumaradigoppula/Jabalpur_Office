@@ -32,4 +32,13 @@ namespace Jabalpur_Office.Models
         [Required(ErrorMessage = "Role Number is required")]
         public string ROLE { get; set; } = string.Empty;
     }
+
+    public class SsrsSettings
+    {
+        public string ReportServerUrl { get; set; }
+        public string ReportPath { get; set; }
+        public string Username { get; set; }
+        public string Password { get; set; }
+        public string Domain { get; set; }
+    }
 }
