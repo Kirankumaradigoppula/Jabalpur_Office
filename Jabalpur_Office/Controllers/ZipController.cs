@@ -1,16 +1,17 @@
-﻿using Jabalpur_Office.Data;
+﻿using ClosedXML.Excel;
+using Jabalpur_Office.Data;
 using Jabalpur_Office.Filters;
+using Jabalpur_Office.Helpers;
 using Jabalpur_Office.Models;
 using Jabalpur_Office.ServiceCore;
-using Microsoft.Extensions.Options;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Cors;
-using Jabalpur_Office.Helpers;
-using static Jabalpur_Office.Helpers.ApiHelper;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
 using System.Data;
 using System.IO.Compression;
-using ClosedXML.Excel;
-using Microsoft.Data.SqlClient;
+using System.Net;
+using static Jabalpur_Office.Helpers.ApiHelper;
 
 
 namespace Jabalpur_Office.Controllers
@@ -27,13 +28,20 @@ namespace Jabalpur_Office.Controllers
         private readonly IWebHostEnvironment _env;
 
         private readonly StorageSettings _settings;
-        public ZipController(AppDbContext context, IsssCore core, JwtTokenHelper jwtToken, IWebHostEnvironment env, IOptions<StorageSettings> settings) : base(context, core, jwtToken, settings)
+
+        private readonly IExportService _exportService;
+
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        public ZipController(AppDbContext context, IsssCore core, JwtTokenHelper jwtToken, IWebHostEnvironment env, IOptions<StorageSettings> settings, Jabalpur_Office.ServiceCore.IExportService exportService, IHttpContextAccessor httpContextAccessor) : base(context, core, jwtToken, settings, httpContextAccessor)
         {
             _context = context;
             _core = core;
             _jwtTokenHelper = jwtToken;
             _env = env;
             _settings = settings.Value;
+            _exportService = exportService;
+            _httpContextAccessor = httpContextAccessor;
+
         }
 
 
@@ -291,6 +299,159 @@ namespace Jabalpur_Office.Controllers
 
             }, nameof(DownloadEventDetailsZip), out _, skipTokenCheck: false);
 
+        }
+
+        [HttpPost("ExportFromDataTable")]
+        public IActionResult ExportFromDataTable([FromBody] object input)
+        {
+            return ExecuteWithHandlingFile(() =>
+            {
+                // ------------------------------------
+                // 1. Prepare wrapper & input
+                // ------------------------------------
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+                var data = ApiHelper.ToObjectDictionary(rawData);
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+                var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+                // ------------------------------------
+                // 2. Build SQL params
+                // ------------------------------------
+                var (paramList, pStatus, pMsg, _, _) = SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: false,
+                    includeWhere: false
+                );
+
+                var FILE_NAME = new SqlParameter("@pFILE_NAME", SqlDbType.NVarChar, -1)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(FILE_NAME);
+                var TITLE = new SqlParameter("@pTITLE", SqlDbType.NVarChar, -1)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(TITLE);
+
+                // ------------------------------------
+                // 3. Execute SP
+                // ------------------------------------
+                DataTable dt = _core.ExecProcDt("ReactExportDataDetails", paramList.ToArray());
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+                SetOutput(pStatus, pMsg, outObj);
+
+                // ------------------------------------
+                // 4. Error / No data
+                // ------------------------------------
+                if (outObj.StatusCode != 200 || dt == null || dt.Rows.Count == 0)
+                {
+                    outObj.StatusCode = outObj.StatusCode == 0 ? 500 : outObj.StatusCode;
+                    outObj.Message = string.IsNullOrEmpty(outObj.Message)
+                        ? "No data available or error occurred."
+                        : outObj.Message;
+
+                    //return (null, "application/json", "error.json", outObj);
+                    return (Array.Empty<byte>(), "application/json", "error.json", outObj);
+                }
+
+                // ------------------------------------
+                // 5. Resolve export params (NON NULL)
+                // ------------------------------------
+                string exportType =
+                    data.TryGetValue("EXPORT_TYPE", out var et) && !string.IsNullOrWhiteSpace(et?.ToString())
+                        ? et.ToString()!
+                        : "PDF";
+
+                string fileName = FILE_NAME.Value != DBNull.Value
+                    ? Convert.ToString(FILE_NAME.Value)!
+                    : $"Export_{DateTime.Now:yyyyMMddHHmmss}";
+
+                string title = TITLE.Value != DBNull.Value
+                    ? Convert.ToString(TITLE.Value)!
+                    : "Details Report";
+
+                string? Reportflag = data.ContainsKey("REPORT_FLAG") ? data["REPORT_FLAG"]?.ToString() : "";
+
+                // 2. Extract image bytes from PATH / URL
+                List<ImagePdfItem> images = new List<ImagePdfItem>();
+
+                if (exportType.Equals("IMAGE_TO_PDF", StringComparison.OrdinalIgnoreCase)
+                 && dt.Columns.Contains("FILE_PATH"))
+                {
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        string? imagePathOrUrl = row["FILE_PATH"]?.ToString();
+                        title = row["IMAGE_TITLE"]?.ToString() ?? "Image";
+
+                        var imgBytes = GetImageBytes(imagePathOrUrl);
+
+                        if (imgBytes != null)
+                        {
+                            images.Add(new ImagePdfItem
+                            {
+                                ImageBytes = imgBytes,
+                                Title = title
+                            });
+                        }
+
+                    }
+                }
+
+                // ------------------------------------
+                // 6. Export
+                // ------------------------------------
+
+                byte[] bytes = _exportService.ExportFromDataTable(
+                  dt,
+                  exportType ?? "PDF",
+                  fileName ?? "Default",
+                  title ?? "Data",
+                   images,                   // 👈 IMPORTANT FIX
+                  out string contentType
+                 //out string fileName
+                 );
+
+                //return (bytes, contentType, fileName, outObj);
+                return (bytes, contentType, fileName ?? "response.json", outObj);
+
+            }, nameof(ExportFromDataTable), out _, skipTokenCheck: false);
+        }
+
+        public class ImagePdfItem
+        {
+            public byte[] ImageBytes { get; set; }
+            public string Title { get; set; }
+        }
+
+        private byte[] GetImageBytes(string? pathOrUrl)
+        {
+            if (string.IsNullOrWhiteSpace(pathOrUrl))
+                return null;
+
+            try
+            {
+                // URL
+                if (pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var client = new WebClient();
+                    return client.DownloadData(pathOrUrl);
+                }
+
+                // Local file
+                if (System.IO.File.Exists(pathOrUrl))
+                {
+                    return System.IO.File.ReadAllBytes(pathOrUrl);
+                }
+            }
+            catch
+            {
+                // swallow broken image errors
+            }
+
+            return null;
         }
     }
 }
