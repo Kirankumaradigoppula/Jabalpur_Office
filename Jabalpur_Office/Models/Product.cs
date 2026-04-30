@@ -1,4 +1,6 @@
-﻿namespace Jabalpur_Office.Models
+﻿using System.Data;
+
+namespace Jabalpur_Office.Models
 {
     /// <summary>
     /// Base class for standard API response structure.
@@ -144,6 +146,12 @@
 
     }
 
+    public class OutParamSpec
+    {
+        public string? Name { get; set; }
+        public SqlDbType Type { get; set; }
+        public int Size { get; set; } = 0; // optional
+    }
 
-    
+
 }
