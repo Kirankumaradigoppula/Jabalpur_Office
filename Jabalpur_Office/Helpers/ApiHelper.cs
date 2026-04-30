@@ -892,5 +892,24 @@ namespace Jabalpur_Office.Helpers
                         .Replace("'", "''");
         }
 
+        /// <summary>
+        /// Create an OUTPUT SqlParameter easily.
+        /// </summary>
+        public static SqlParameter CreateDynamicOutParam(
+           string paramName,
+           SqlDbType dbType,
+           int size = 0)
+        {
+            var p = new SqlParameter(paramName, dbType)
+            {
+                Direction = ParameterDirection.Output
+            };
+
+            if (size > 0)
+                p.Size = size;
+
+            return p;
+        }
+
     }
 }
