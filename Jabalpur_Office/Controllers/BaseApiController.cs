@@ -37,12 +37,16 @@ namespace Jabalpur_Office.Controllers
 
         private readonly StorageSettings _settings;
 
-        public BaseApiController(AppDbContext context, IsssCore core_, JwtTokenHelper jwtToken, IOptions<StorageSettings> settings) 
+        private readonly IHttpContextAccessor _httpContextAccessor;
+
+        public BaseApiController(AppDbContext context, IsssCore core_, JwtTokenHelper jwtToken, IOptions<StorageSettings> settings, IHttpContextAccessor httpContextAccessor) 
         {
             _context = context;
             __core = core_;
             _jwtTokenHelper = jwtToken;
             _settings = settings.Value;
+            _httpContextAccessor = httpContextAccessor;
+
         }
 
 
@@ -474,6 +478,181 @@ namespace Jabalpur_Office.Controllers
             }
         }
 
+        protected WrapperListData ExecuteUniversalList(
+           object input,
+           string procName,
+           List<OutParamSpec>? outParamsSpec = null,  // 👈 fully dynamic OUT params
+           string? apiflag = null
+        )
+        {
+            // 1. Prepare wrapper & raw data
+            var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+
+            // 2. Convert to object dictionary
+            var data = ApiHelper.ToObjectDictionary(rawData);
+            if (apiflag == "APPEND_DETAILS_VISITOR" || apiflag == "API_WEB_PORTAL" || apiflag == "USER_DETAILS")
+            {
+                data["USERID"] = pJWT_USERID;
+            }
+            var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+            // 3. Extract search & paging
+            var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
+
+
+
+
+            // 4. Build SQL parameters
+            var (paramList, pStatus, pMsg, pTotalCount, pWhere) =
+                SqlParamBuilderWithAdvanced.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    includeTotalCount: true,
+                    includeWhere: true,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+            // 5. Add DYNAMIC OUT PARAMS
+            Dictionary<string, SqlParameter> outParams = new();
+            if (outParamsSpec != null)
+            {
+                foreach (var spec in outParamsSpec)
+                {
+                    SqlParameter p =
+                        ApiHelper.CreateDynamicOutParam("@p" + spec.Name, spec.Type, spec.Size);
+
+                    paramList.Add(p);
+
+                    outParams[spec.Name] = p;
+                }
+            }
+
+            // 6. Execute stored procedure
+            //DataTable dt = _core.ExecProcDt(procName, paramList.ToArray());
+            DataSet ds = __core.ExecProcDs(procName, paramList.ToArray());
+            DataTable dt = (ds != null && ds.Tables.Count > 0) ? ds.Tables[0] : new DataTable();
+            // 7. Convert to output wrapper
+            ApiHelper.SetDataTableListOutput(dt, outObj);
+
+            // 8. Set output message + status
+            SetOutput(pStatus, pMsg, outObj);
+
+
+
+
+            // 9. Apply pagination
+            if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
+            {
+                PaginationHelper.ApplyPagination(
+                    outObj,
+                    pTotalCount.Value?.ToString(),
+                    pageIndex.Value,
+                    pageSize.Value
+                );
+            }
+
+            // 10. Add OUT parameters to ExtraData
+            foreach (var item in outParams)
+            {
+                var key = item.Key;
+                var val = item.Value.Value;
+
+                outObj.ExtraData[key] =
+                    val == DBNull.Value ? null : val;
+            }
+
+            if (ds.Tables.Count > 1 && ds.Tables[1] != null && ds.Tables[1].Rows.Count > 0)
+            {
+                outObj.ExtraData["COLUMN_LIST"] =
+                   ds.Tables[1].Rows[0]["COLUMN_JSON"]?.ToString() ?? "[]";
+            }
+            return outObj;
+        }
+
+        protected WrapperListData ExecuteUniversalCrudWithRetId(
+            object input,
+            string procName,
+            List<OutParamSpec>? outParamsSpec = null, // 👈 fully dynamic OUT params
+            string? apiflag = null
+        )
+        {
+            var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+            var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+            var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+            string flag = data.ContainsKey("FLAG") ? data["FLAG"]?.ToString() ?? "" : "";
+
+            if (!string.IsNullOrEmpty(apiflag))
+            {
+                if (apiflag == "API_CRUD_APPOINTMENT")
+                {
+                    data["ENTRY_FROM"] = "PORTAL";
+                }
+            }
+
+            // Step 2: Build SQL parameters (advanced dynamic approach)
+            var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                data: data,
+                keys: filterKeys,
+                mpSeatId: pJWT_MP_SEAT_ID,
+                userId: pJWT_USERID,
+                includeRetId: true
+            );
+
+            // 5. Add DYNAMIC OUT PARAMS
+            Dictionary<string, SqlParameter> outParams = new();
+            if (outParamsSpec != null)
+            {
+                foreach (var spec in outParamsSpec)
+                {
+                    SqlParameter p =
+                        ApiHelper.CreateDynamicOutParam("@p" + spec.Name, spec.Type, spec.Size);
+
+                    paramList.Add(p);
+
+                    outParams[spec.Name] = p;
+                }
+            }
+
+            DataTable dt = __core.ExecProcDt(procName, paramList.ToArray());
+
+            SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+
+            string autoSmsStatus = string.Empty;
+
+            foreach (var item in outParams)
+            {
+
+                var key = item.Key;
+                var rawVal = item.Value?.Value;
+
+                string? value =
+                    rawVal == null || rawVal == DBNull.Value
+                    ? string.Empty
+                    : rawVal.ToString();
+
+                // Store in ExtraData (existing logic)
+                outObj.ExtraData[key] = value ?? string.Empty;
+
+                // Capture specific OUT parameter
+                if (key.Equals("AUTO_SMS_STATUS", StringComparison.OrdinalIgnoreCase))
+                {
+                    autoSmsStatus = value ?? "N";
+                }
+
+
+            }
+
+            if (outObj.StatusCode != 200)
+                return outObj;
+
+            
+
+            return outObj;
+        }
 
 
 
