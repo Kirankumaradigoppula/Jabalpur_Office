@@ -153,5 +153,24 @@ namespace Jabalpur_Office.Models
         public int Size { get; set; } = 0; // optional
     }
 
+    public class ZipPartInfo
+    {
+        public string MonthKey { get; set; } = "";
+        public string FileName { get; set; } = "";
+
+        public string DownloadUrl { get; set; } = "";
+
+        public long SizeBytes { get; set; }
+
+        public double SizeMB { get; set; }
+    }
+
+    public class FileResponse : Product
+    {
+        public byte[]? Bytes { get; set; }
+        public string ContentType { get; set; } = "application/octet-stream";
+        public string FileName { get; set; } = "download";
+        public WrapperListData Meta { get; set; } = new WrapperListData();
+    }
 
 }
