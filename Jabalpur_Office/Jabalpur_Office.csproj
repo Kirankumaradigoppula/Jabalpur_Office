@@ -27,4 +27,8 @@
     <PackageReference Include="UAParser.Core" Version="4.0.5" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="wwwroot\" />
+  </ItemGroup>
+
 </Project>
