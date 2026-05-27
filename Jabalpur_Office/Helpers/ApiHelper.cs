@@ -696,20 +696,20 @@ namespace Jabalpur_Office.Helpers
                         }
 
                         // ✅ 3️. Add a merged PDF of all images
-                        if (imageFiles.Any())
-                        {
-                            using (var pdfStream = new MemoryStream())
-                            {
-                                CreatePdfFromImages(imageFiles, pdfStream);
-                                pdfStream.Position = 0;
-
-                                var pdfEntry = archive.CreateEntry("All_Images.pdf");
-                                using (var entryStream = pdfEntry.Open())
-                                {
-                                    pdfStream.CopyTo(entryStream);
-                                }
-                            }
-                        }
+                       // if (imageFiles.Any())
+                       // {
+                       //     using (var pdfStream = new MemoryStream())
+                       //     {
+                       //         CreatePdfFromImages(imageFiles, pdfStream);
+                       //         pdfStream.Position = 0;
+                       //
+                       //         var pdfEntry = archive.CreateEntry("All_Images.pdf");
+                       //         using (var entryStream = pdfEntry.Open())
+                       //         {
+                       //             pdfStream.CopyTo(entryStream);
+                       //         }
+                       //     }
+                       // }
 
 
                     }
@@ -719,7 +719,288 @@ namespace Jabalpur_Office.Helpers
 
                 return (zipBytes, zipFileName);
             }
+
+            public static string CreateNewZipFile(
+                  string excelFilePath,
+              List<string> filePaths,
+              string zipFilePath
+            )
+            {
+                if (filePaths == null)
+                    filePaths = new List<string>();
+
+                using var zipFs =
+                new FileStream(
+                   zipFilePath,
+                   FileMode.Create,
+                   FileAccess.Write,
+                   FileShare.None);
+
+                using var archive =
+                    new ZipArchive(
+                        zipFs,
+                        ZipArchiveMode.Create);
+
+                HashSet<string> addedNames =
+                    new(StringComparer.OrdinalIgnoreCase);
+
+                List<string> imageFiles = new();
+
+                // =====================================================
+                // ADD EXCEL
+                // =====================================================
+
+                if (File.Exists(excelFilePath))
+                {
+                    string excelName =
+                        Path.GetFileName(excelFilePath);
+
+                    AddFileToArchive(
+                        archive,
+                        excelFilePath,
+                        excelName,
+                        addedNames);
+                }
+
+                // =====================================================
+                // ADD FILES
+                // =====================================================
+
+                foreach (var file in filePaths)
+                {
+                    try
+                    {
+                        if (!File.Exists(file))
+                            continue;
+
+                        FileInfo fi = new(file);
+
+                        // Skip huge files > 500MB
+                        if (fi.Length > 500_000_000)
+                            continue;
+
+                        string fileName =
+                            Path.GetFileName(file);
+
+                        string uniqueName =
+                            GetUniqueName(
+                                fileName,
+                                addedNames);
+
+                        AddFileToArchive(
+                            archive,
+                            file,
+                            uniqueName,
+                            addedNames);
+
+                        if (IsImageFile(file))
+                        {
+                            imageFiles.Add(file);
+                        }
+                    }
+                    catch
+                    {
+                        // Skip bad file
+                    }
+                }
+                return zipFilePath;
+
+            }
+            //-----------------------------------
+            // ============================================================
+            // 1 GB LIMIT
+            // ============================================================
+
+            private const long MAX_ZIP_SIZE =
+                500L * 1024L * 1024L; // 1 GB
+
+            // ============================================================
+            // CREATE SPLIT ZIP FILES
+            // ============================================================
+            public static List<string> CreateSplitZipFiles(
+             string excelFilePath,
+             List<string> filePaths,
+             string outputFolder,
+             string zipBaseName)
+            {
+                List<string> createdZipFiles =
+                  new List<string>();
+
+                if (!Directory.Exists(outputFolder))
+                {
+                    Directory.CreateDirectory(outputFolder);
+                }
+
+                int partNo = 1;
+
+                string currentZipPath =
+                Path.Combine(
+                   outputFolder,
+                $"{zipBaseName}_Part{partNo}.zip");
+
+                FileStream zipFs =
+                      new FileStream(
+                      currentZipPath,
+                      FileMode.Create,
+                      FileAccess.Write,
+                      FileShare.None);
+
+                ZipArchive archive =
+                   new ZipArchive(
+                zipFs,
+                ZipArchiveMode.Create);
+
+                createdZipFiles.Add(currentZipPath);
+
+                long currentZipSize = 0;
+
+                HashSet<string> addedNames =
+                    new HashSet<string>(
+                        StringComparer.OrdinalIgnoreCase);
+                // ========================================================
+                // ADD EXCEL IN FIRST ZIP
+                // ========================================================
+                if (File.Exists(excelFilePath))
+                {
+                    FileInfo fi =
+                       new FileInfo(excelFilePath);
+
+                    AddFileToArchive(
+                        archive,
+                        excelFilePath,
+                        Path.GetFileName(excelFilePath),
+                        addedNames);
+
+                    currentZipSize += fi.Length;
+                }
+                // ========================================================
+                // ADD FILES
+                // ========================================================
+                foreach (string file in filePaths)
+                {
+                    try
+                    {
+                        if (!File.Exists(file))
+                            continue;
+
+                        FileInfo fi =
+                            new FileInfo(file);
+
+                        long estimatedSize =
+                            fi.Length;
+
+                        // =================================================
+                        // CREATE NEW ZIP IF LIMIT EXCEEDS
+                        // =================================================
+
+                        if ((currentZipSize + estimatedSize)
+                            > MAX_ZIP_SIZE)
+                        {
+                            archive.Dispose();
+                            zipFs.Dispose();
+
+                            partNo++;
+
+                            currentZipPath =
+                                Path.Combine(
+                                    outputFolder,
+                                    $"{zipBaseName}_Part{partNo}.zip");
+
+                            zipFs =
+                                new FileStream(
+                                    currentZipPath,
+                                    FileMode.Create,
+                                    FileAccess.Write,
+                                    FileShare.None);
+
+                            archive =
+                                new ZipArchive(
+                                    zipFs,
+                                    ZipArchiveMode.Create);
+
+                            createdZipFiles.Add(currentZipPath);
+
+                            currentZipSize = 0;
+                        }
+
+                        string uniqueName =
+                            GetUniqueName(
+                                Path.GetFileName(file),
+                                addedNames);
+
+                        AddFileToArchive(
+                            archive,
+                            file,
+                            uniqueName, addedNames);
+
+                        currentZipSize += estimatedSize;
+                    }
+                    catch
+                    {
+                        // Skip bad file
+                    }
+                }
+                archive.Dispose();
+                zipFs.Dispose();
+
+                return createdZipFiles;
+
+            }
+
+            // ============================================================
+            // CREATE MASTER ZIP
+            // ============================================================
+            public static string CreateMasterZip(
+             List<string> splitZipFiles,
+             string outputFolder,
+             string masterZipName)
+            {
+
+                string masterZipPath =
+            Path.Combine(
+                outputFolder,
+                masterZipName);
+
+                using (FileStream fs =
+                    new FileStream(
+                        masterZipPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None))
+                {
+                    using (ZipArchive archive =
+                        new ZipArchive(
+                            fs,
+                            ZipArchiveMode.Create))
+                    {
+                        foreach (string zipFile
+                            in splitZipFiles)
+                        {
+                            if (!File.Exists(zipFile))
+                                continue;
+
+                            archive.CreateEntryFromFile(
+                                zipFile,
+                                Path.GetFileName(zipFile),
+                                CompressionLevel.Fastest);
+                        }
+                    }
+                }
+
+                return masterZipPath;
+            }
+            //-----
+
+
+         
+           
+
+           
+
         }
+
+
+
 
         private static void CreatePdfFromImages(List<string> imagePaths, Stream output)
         {
