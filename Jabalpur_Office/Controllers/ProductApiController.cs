@@ -3763,7 +3763,9 @@ namespace Jabalpur_Office.Controllers
                     Direction = ParameterDirection.Output
                 };
                 paramList.Add(pTotalAspectAmount);
-                DataTable dt = _core.ExecProcDt("ReactSwechchmadDetails", paramList.ToArray());
+                DataSet ds = _core.ExecProcDs("ReactSwechchmadDetails", paramList.ToArray());
+                DataTable dt = (ds != null && ds.Tables.Count > 0) ? ds.Tables[0] : new DataTable();
+                // DataTable dt = _core.ExecProcDt("ReactSwechchmadDetails", paramList.ToArray());
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
 
@@ -3784,6 +3786,13 @@ namespace Jabalpur_Office.Controllers
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
                     PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                }
+
+                // COLUMN LIST (Table 1)
+                if (ds.Tables.Count > 1 && ds.Tables[1] != null && ds.Tables[1].Rows.Count > 0)
+                {
+                    outObj.ExtraData["COLUMN_LIST"] =
+                       ds.Tables[1].Rows[0]["COLUMN_JSON"]?.ToString() ?? "[]";
                 }
 
                 return outObj;
@@ -8019,6 +8028,16 @@ namespace Jabalpur_Office.Controllers
             }, nameof(CrudDispatchLetterDetails), out _, skipTokenCheck: false));
         }
 
+        [HttpPost("GetTableHistoryDetails")]
+        public IActionResult GetTableHistoryDetails([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                return ExecuteUniversalList(input, "ReactTableHistoryDetails");
+
+            }, nameof(GetTableHistoryDetails), out _, skipTokenCheck: false));
+        }
+
         [HttpPost("SendSMSService")]
         [Authorize]
         public async Task<WrapperListData> SendSMSService([FromBody] object input)
@@ -8275,9 +8294,9 @@ namespace Jabalpur_Office.Controllers
         }
 
         private static string? ResolveValue(
-   string? jwtValue,
-   Dictionary<string, object> data,
-   string key)
+          string? jwtValue,
+          Dictionary<string, object> data,
+          string key)
         {
             if (!string.IsNullOrWhiteSpace(jwtValue))
                 return jwtValue;
