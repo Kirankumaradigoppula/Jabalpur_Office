@@ -654,6 +654,80 @@ namespace Jabalpur_Office.Controllers
             return outObj;
         }
 
+        protected IActionResult ExecuteExportWithHandlingFile(
+          Func<FileResponse> func,
+          string logContext,
+          out WrapperListData outObj,
+          bool skipTokenCheck = false
+        )
+        {
+            outObj = new WrapperListData();
+
+            try
+            {
+                // ✅ Token check
+                bool isAnonymous = skipTokenCheck || IsCallerAnonymous();
+
+                if (!isAnonymous && !CheckToken(out var loginResponse))
+                {
+                    return Unauthorized(new
+                    {
+                        StatusCode = 401,
+                        Message = "Unauthorized or invalid token."
+                    });
+                }
+
+                // ✅ Execute business logic
+                var result = func();
+                outObj = result.Meta ?? new WrapperListData();
+
+                // ✅ If error → return JSON
+                //if (outObj.StatusCode != 200)
+                //    return BadRequest(outObj);
+                if (outObj.StatusCode != 200)
+                {
+                    Response.Headers["X-StatusCode"] = outObj.StatusCode.ToString();
+                    Response.Headers["X-Message"] = outObj.Message ?? "";
+
+                    // ✅ Return file
+                    return File(Array.Empty<byte>(), result.ContentType, result.FileName);
+                }
+
+                // ✅ Validate file
+                if (result.Bytes == null || result.Bytes.Length == 0)
+                {
+                    Response.Headers["X-StatusCode"] = outObj.StatusCode.ToString() ?? "500";
+                    Response.Headers["X-Message"] = outObj.Message ?? "File generation failed.";
+                    return File(Array.Empty<byte>(), result.ContentType, result.FileName);
+                    //return BadRequest(new WrapperListData
+                    //{
+                    //    StatusCode = 500,
+                    //    Message = "File generation failed."
+                    //});
+                }
+
+                // ✅ Optional metadata in headers
+                Response.Headers["X-StatusCode"] = outObj.StatusCode.ToString();
+                Response.Headers["X-Message"] = outObj.Message ?? "";
+
+                // ✅ Return file
+                return File(result.Bytes, result.ContentType, result.FileName);
+            }
+            catch (Exception ex)
+            {
+                outObj = new WrapperListData
+                {
+                    StatusCode = 500,
+                    Message = ex.Message
+                };
+
+                // TODO: log error
+                //_logger.LogError(ex, logContext);
+
+                return StatusCode(500, outObj);
+            }
+        }
+
 
 
     }
