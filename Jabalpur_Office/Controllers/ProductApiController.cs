@@ -166,9 +166,9 @@ namespace Jabalpur_Office.Controllers
 
                 if (dt.Rows.Count > 0)
                 {
-                    var userId = Convert.ToString(dt.Rows[0]["USERID"]);
-                    var userName = Convert.ToString(dt.Rows[0]["FIRSTNAME"]);
-                    var mpSeatId = Convert.ToString(dt.Rows[0]["MP_SEAT_ID"]);
+                    var userId = Convert.ToString(dt.Rows[0]["USERID"]) ?? "";
+                    var userName = Convert.ToString(dt.Rows[0]["FIRSTNAME"]) ?? "";
+                    var mpSeatId = Convert.ToString(dt.Rows[0]["MP_SEAT_ID"]) ?? "";
                     // JWT token (optional)
                     string jwtToken = _jwtTokenHelper.GenerateToken(userId, userName, mpSeatId);
 
@@ -810,7 +810,7 @@ namespace Jabalpur_Office.Controllers
                 SetOutput(pStatus, pMsg, outObj);
 
                 // COLUMN LIST (Table 1)
-                if (ds.Tables.Count > 1 && ds.Tables[1] != null && ds.Tables[1].Rows.Count > 0)
+                if (ds != null && ds.Tables.Count > 1 && ds.Tables[1] != null && ds.Tables[1].Rows.Count > 0)
                 {
                     outObj.ExtraData["COLUMN_LIST"] =
                        ds.Tables[1].Rows[0]["COLUMN_JSON"]?.ToString() ?? "[]";
@@ -819,7 +819,7 @@ namespace Jabalpur_Office.Controllers
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -952,7 +952,7 @@ namespace Jabalpur_Office.Controllers
                 var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
                 var filterKeys = ApiHelper.GetFilteredKeys(data);
 
-                string cwStagesValue = data.ContainsKey("STAGES_MAS_ID") ? data["STAGES_MAS_ID"]?.ToString() : "0";
+                string? cwStagesValue = data.ContainsKey("STAGES_MAS_ID") ? data["STAGES_MAS_ID"]?.ToString() : "0";
 
                 // Step 2: Build SQL parameters (advanced dynamic approach)
                 var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
@@ -1015,8 +1015,8 @@ namespace Jabalpur_Office.Controllers
 
 
                 var filterKeys = ApiHelper.GetFilteredKeys(selectedData);
-                string pFLAG = string.Empty;
-                string pTABLE_FLAG = string.Empty;
+                string? pFLAG = string.Empty;
+                string? pTABLE_FLAG = string.Empty;
                 if (selectedData.ContainsKey("FLAG"))
                 {
                     pFLAG = selectedData["FLAG"]?.ToString();
@@ -1089,8 +1089,8 @@ namespace Jabalpur_Office.Controllers
                             if (pFLAG =="SAVE")
                             {
                                 var storageRoot = _settings.BasePath;
-                                string cwCodeValue = null;
-                                string cwStagesValue = null;
+                                string? cwCodeValue = null;
+                                string? cwStagesValue = null;
                                 cwCodeValue = selectedData.ContainsKey("CW_CODE") ? selectedData["CW_CODE"]?.ToString() : "UNKNOWN";
                                 cwStagesValue = selectedData.ContainsKey("STAGES_MAS_ID") ? selectedData["STAGES_MAS_ID"]?.ToString() : "0";
                                 string baseFolder = string.Empty;
@@ -1151,7 +1151,7 @@ namespace Jabalpur_Office.Controllers
                 if (pFLAG == "DELETE")
                 {
 
-                        string pFILE_PATH = string.Empty;
+                        string? pFILE_PATH = string.Empty;
                         if (data.ContainsKey("FILE_PATH"))
                         {
                             pFILE_PATH = data["FILE_PATH"]?.ToString();
@@ -1174,16 +1174,16 @@ namespace Jabalpur_Office.Controllers
                             {
 
                                    // Base folder
-                                   string baseFolderPath = _settings.BasePath;
+                                   string? baseFolderPath = _settings.BasePath;
 
                                     // Build full file path
-                                    string fullFilePath = Path.Combine(baseFolderPath, pFILE_PATH.Replace("/", "\\"));
+                                    string? fullFilePath = Path.Combine(baseFolderPath, pFILE_PATH.Replace("/", "\\"));
                             // ✅ Step 1: Delete file if exists
                             if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
                             {
                                 System.IO.File.Delete(fullFilePath);
                                 // ✅ Step 2: Check parent folder
-                                string parentFolder = Path.GetDirectoryName(fullFilePath);
+                                string? parentFolder = Path.GetDirectoryName(fullFilePath);
                                 if (!string.IsNullOrWhiteSpace(parentFolder) &&
                                          Directory.Exists(parentFolder) &&
                                         !Directory.EnumerateFileSystemEntries(parentFolder).Any())
@@ -1355,9 +1355,9 @@ namespace Jabalpur_Office.Controllers
 
                     data["TABLE_FLAG"] = "CONSTRUCTION_INSPECTION";
                     // Get OTP_SMS_STATUS from DB
-                    string pQry = @"SELECT DISTINCT INSPECTION_ID FROM CONSTRUCTION_INSPECTION_DETAILS WHERE MP_SEAT_ID = @MP_SEAT_ID AND ID=@ID";
+                    string? pQry = @"SELECT DISTINCT INSPECTION_ID FROM CONSTRUCTION_INSPECTION_DETAILS WHERE MP_SEAT_ID = @MP_SEAT_ID AND ID=@ID";
 
-                    string inspectionId = Convert.ToString(
+                    string? inspectionId = Convert.ToString(
                        _core.ExecScalarText(
                             pQry,
                              new[] { 
@@ -1367,7 +1367,7 @@ namespace Jabalpur_Office.Controllers
                              }
                         )
                      );
-                    data["CW_CODE"] = inspectionId;
+                    data["CW_CODE"] = inspectionId ?? "";
                     data["STAGES_MAS_ID"] = Convert.ToString(outObj.RetID);
                     // Convert updated dictionary back to JSON string for CrudConstructionImages
                     string updatedInput = JsonConvert.SerializeObject(data);
@@ -1420,7 +1420,7 @@ namespace Jabalpur_Office.Controllers
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -1460,7 +1460,7 @@ namespace Jabalpur_Office.Controllers
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -1619,7 +1619,7 @@ namespace Jabalpur_Office.Controllers
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -1723,14 +1723,14 @@ namespace Jabalpur_Office.Controllers
                     var row = dt.AsEnumerable().FirstOrDefault(r => r["USERID"]?.ToString() == pJWT_USERID);
                     if (row != null && dt.Columns.Contains("MENU_CRUD_ACCESS"))
                     {
-                        outObj.ExtraData["MENU_CRUD_ACCESS"] = row["MENU_CRUD_ACCESS"]?.ToString();
+                        outObj.ExtraData["MENU_CRUD_ACCESS"] = row["MENU_CRUD_ACCESS"]?.ToString() ?? "";
                     }
                 }
 
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -1800,7 +1800,7 @@ namespace Jabalpur_Office.Controllers
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -1864,26 +1864,13 @@ namespace Jabalpur_Office.Controllers
 
                 DataTable dt = _core.ExecProcDt("ReactReasonMasterDetails", paramList.ToArray());
 
-                // ✅ Convert PURPOSE_LIST into sub-array
-                //var list = dt.AsEnumerable().Select(row => new
-                //{
-                //    REASON_MAS_ID = row["REASON_MAS_ID"],
-                //    REASON_NAME = row["REASON_NAME"],
-                //    PURPOSES = row["PURPOSE_LIST"]?.ToString()
-                //                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                //                .Select(pid => new {
-                //                    PURPOSE_ID = pid.Trim()
-                //                    //PURPOSE_NAME = GetPurposeName(pid.Trim()) // 🔹 Lookup method
-                //                }).ToList()
-                //}).ToList();
-
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
 
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -1993,7 +1980,7 @@ namespace Jabalpur_Office.Controllers
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -2063,7 +2050,7 @@ namespace Jabalpur_Office.Controllers
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -2103,7 +2090,7 @@ namespace Jabalpur_Office.Controllers
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -2167,7 +2154,7 @@ namespace Jabalpur_Office.Controllers
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() ?? "0", pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -2187,7 +2174,7 @@ namespace Jabalpur_Office.Controllers
             );
             var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
             var filterKeys = ApiHelper.GetFilteredKeys(data);
-            string pImagePath = string.Empty;
+            string? pImagePath = string.Empty;
 
             if (data["FLAG"]?.ToString() == "SAVE")
             {
@@ -2202,7 +2189,7 @@ namespace Jabalpur_Office.Controllers
             if (data["FLAG"]?.ToString() == "DELETE")
             {
 
-                string pQry = @"SELECT TOP 1 IMAGE_PATH FROM MEDIA_ALBUM_CATEGORY  WHERE MP_SEAT_ID = @MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID";
+                string? pQry = @"SELECT TOP 1 IMAGE_PATH FROM MEDIA_ALBUM_CATEGORY  WHERE MP_SEAT_ID = @MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID";
                 // Get old MEDIA_DATE from DB (before update)
                 pImagePath = Convert.ToString(
                      _core.ExecScalarText(
@@ -2218,9 +2205,9 @@ namespace Jabalpur_Office.Controllers
 
             if (data["FLAG"]?.ToString() == "UPDATE")
             {
-                string newMediaDate = data["MEDIA_DATE"]?.ToString();
+                string? newMediaDate = data["MEDIA_DATE"]?.ToString();
                 // Get old MEDIA_DATE from DB
-                string oldMediaDate = Convert.ToString(_core.ExecScalarText(
+                string? oldMediaDate = Convert.ToString(_core.ExecScalarText(
                     @"SELECT TOP 1 FORMAT(MEDIA_DATE,'dd-MM-yyyy') 
                                   FROM MEDIA_ALBUM_CATEGORY  
                                   WHERE MP_SEAT_ID=@MP_SEAT_ID AND MEDIA_ALBUM_ID=@MEDIA_ALBUM_ID",
@@ -2234,9 +2221,9 @@ namespace Jabalpur_Office.Controllers
                 if (!string.IsNullOrEmpty(oldMediaDate) && oldMediaDate != newMediaDate)
                 {
                     // Move all images for this album to new MEDIA_DATE folder
-                    string oldFolder = Path.Combine(_settings.BasePath, $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{oldMediaDate}");
-                    string newFolder = Path.Combine(_settings.BasePath, $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{newMediaDate}");
-                    string pMediaAlbumId = data["MEDIA_ALBUM_ID"]?.ToString();
+                    string? oldFolder = Path.Combine(_settings.BasePath, $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{oldMediaDate}");
+                    string? newFolder = Path.Combine(_settings.BasePath, $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{newMediaDate}");
+                    string? pMediaAlbumId = data["MEDIA_ALBUM_ID"]?.ToString();
 
                     if (!Directory.Exists(newFolder))
                         Directory.CreateDirectory(newFolder);
@@ -2257,10 +2244,10 @@ namespace Jabalpur_Office.Controllers
                         );
                         foreach (DataRow row in dtCoverImages.Rows)
                         {
-                            string oldFilePath = Path.Combine(_settings.BasePath, row["IMAGE_PATH"].ToString().Replace("/", "\\"));
+                            string? oldFilePath = Path.Combine(_settings.BasePath, row["IMAGE_PATH"]?.ToString().Replace("/", "\\"));
                             if (System.IO.File.Exists(oldFilePath))
                             {
-                                string newFilePath = Path.Combine(newFolder, row["IMAGE"].ToString());
+                                string? newFilePath = Path.Combine(newFolder, row["IMAGE"].ToString());
                                 System.IO.File.Move(oldFilePath, newFilePath);
 
                                 string newRelativePath = $"image/MP_{pJWT_MP_SEAT_ID}/MediaAlbums/{newMediaDate}/{row["IMAGE"]}";
@@ -3849,7 +3836,7 @@ namespace Jabalpur_Office.Controllers
                     pageSize: pageSize
                 );
 
-                DataTable dt = _core.ExecProcDt("ReactCrudUddeshyaMasDetails", paramList.ToArray());
+                DataTable dt = _core.ExecProcDt("ReactUddeshyaMasterDetails", paramList.ToArray());
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
 
@@ -8153,7 +8140,7 @@ namespace Jabalpur_Office.Controllers
                 string mobile = mobileNumbers[0];
                 try
                 {
-                    string finalUrl = smsApiUrl.Replace(
+                    string finalUrl = (smsApiUrl ?? "").Replace(
                         "{MOBNO}",
                         Uri.EscapeDataString(mobile)
                     );
@@ -8206,11 +8193,11 @@ namespace Jabalpur_Office.Controllers
 
                 foreach (var batch in batches)
                 {
-                    string batchMobiles = string.Join(",", batch);
+                    string? batchMobiles = string.Join(",", batch);
 
                     try
                     {
-                        string finalUrl = smsApiUrl.Replace(
+                        string? finalUrl = (smsApiUrl ?? "").Replace(
                              "{MOBNO}",
                              Uri.EscapeDataString(batchMobiles)
                          );
@@ -8243,7 +8230,7 @@ namespace Jabalpur_Office.Controllers
                             failureCount += batch.Count;
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
                         failureCount += batch.Count;
                     }
