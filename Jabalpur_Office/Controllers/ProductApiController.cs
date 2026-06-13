@@ -1707,25 +1707,34 @@ namespace Jabalpur_Office.Controllers
                     data: data,
                     keys: filterKeys,
                     mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
                     includeTotalCount: true,
                     includeWhere: true,
                     pageIndex: pageIndex,
                     pageSize: pageSize
                 );
 
+                var pMENU_CRUD_ACCESS = new SqlParameter("@pMENU_CRUD_ACCESS", SqlDbType.VarChar,10)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                paramList.Add(pMENU_CRUD_ACCESS);
+
                 DataTable dt = _core.ExecProcDt("ReactWebPortalUserRegDetails", paramList.ToArray());
                 ApiHelper.SetDataTableListOutput(dt, outObj);
                 SetOutput(pStatus, pMsg, outObj);
 
                 //Get Menu Crud Access For Login Userid 
-                if (dt != null && dt.Rows.Count > 0)
-                {
-                    var row = dt.AsEnumerable().FirstOrDefault(r => r["USERID"]?.ToString() == pJWT_USERID);
-                    if (row != null && dt.Columns.Contains("MENU_CRUD_ACCESS"))
-                    {
-                        outObj.ExtraData["MENU_CRUD_ACCESS"] = row["MENU_CRUD_ACCESS"]?.ToString() ?? "";
-                    }
-                }
+                //if (dt != null && dt.Rows.Count > 0)
+                //{
+                //    var row = dt.AsEnumerable().FirstOrDefault(r => r["USERID"]?.ToString() == pJWT_USERID);
+                //    if (row != null && dt.Columns.Contains("MENU_CRUD_ACCESS"))
+                //    {
+                //        outObj.ExtraData["MENU_CRUD_ACCESS"] = row["MENU_CRUD_ACCESS"]?.ToString() ?? "";
+                //    }
+                //}
+
+                outObj.ExtraData["MENU_CRUD_ACCESS"] = Convert.ToString(pMENU_CRUD_ACCESS.Value) ?? "false";
 
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
