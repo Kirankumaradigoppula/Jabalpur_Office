@@ -138,8 +138,11 @@ namespace Jabalpur_Office.Models
         public string JS { get; set; }
         public int MENU_HAS_ACCESS { get; set; }
         public int C_USER_ACCESS { get; set; }
+        public int CAN_CREATE { get; set; }
         public int U_USER_ACCESS { get; set; }
+        public int CAN_UPDATE { get; set; }
         public int D_USER_ACCESS { get; set; }
+        public int CAN_DELETE { get; set; }
         public int LEVEL { get; set; }  // 1 = Menu, 2 = Child, 3 = SubChild
         public string HierarchyPath { get; set; }  // 1 = Menu, 2 = Child, 3 = SubChild
         public List<MenuItem> Children { get; set; } = new List<MenuItem>();
