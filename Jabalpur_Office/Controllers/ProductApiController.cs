@@ -618,6 +618,12 @@ namespace Jabalpur_Office.Controllers
                             PATH = (flag == "USER_MENU_LIST") ? r["PATH"]?.ToString() : null,
                             ICON = (flag == "USER_MENU_LIST" || flag == "USER_MENU_RIGHTS") ? r["ICON"]?.ToString() : null,
                             MENU_HAS_ACCESS = ( flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["MENU_HAS_ACCESS"]) : 0,
+                            //28072026
+                            CAN_CREATE = (flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["CAN_CREATE"]) : 0,
+                            CAN_UPDATE = (flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["CAN_UPDATE"]) : 0,
+                            CAN_DELETE = (flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["CAN_DELETE"]) : 0,
+
+                            //28072026
                             C_USER_ACCESS = (flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["C_USER_ACCESS"]) : 0,
                             U_USER_ACCESS = (flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["U_USER_ACCESS"]) : 0,
                             D_USER_ACCESS = (flag == "USER_MENU_RIGHTS") ? Convert.ToInt32(r["D_USER_ACCESS"]) : 0,
@@ -685,7 +691,7 @@ namespace Jabalpur_Office.Controllers
                         FilterMenu(root);
 
                     // Convert to dictionary (for JSON output)
-                    outObj.DataObject = ConvertToDict(rootItems, flag);
+                    outObj.DataObject = ConvertToDict(rootItems, flag!);
                 }
                 
                 return outObj;
@@ -715,6 +721,11 @@ namespace Jabalpur_Office.Controllers
                 if (flag == "USER_MENU_RIGHTS")
                 {
                     dict["MENU_HAS_ACCESS"] = m.MENU_HAS_ACCESS.ToString();
+                    //28072026
+                      dict["CAN_CREATE"] = m.CAN_CREATE.ToString();
+                      dict["CAN_UPDATE"] = m.CAN_UPDATE.ToString();
+                      dict["CAN_DELETE"] = m.CAN_DELETE.ToString();
+                    //28072026
                     dict["C_USER_ACCESS"] = m.C_USER_ACCESS.ToString();
                     dict["U_USER_ACCESS"] = m.U_USER_ACCESS.ToString();
                     dict["D_USER_ACCESS"] = m.D_USER_ACCESS.ToString();
@@ -748,6 +759,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudWebPortalUserMenuRights")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudWebPortalUserMenuRights([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -777,6 +789,7 @@ namespace Jabalpur_Office.Controllers
         //6.
 
         [HttpPost("GetConstructionWorkDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetConstructionWorkDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -831,6 +844,7 @@ namespace Jabalpur_Office.Controllers
 
         //7
         [HttpPost("GetConstructionFormFieldDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetConstructionFormFieldDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -865,6 +879,7 @@ namespace Jabalpur_Office.Controllers
 
         //8
         [HttpPost("GetConstructionStagesDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetConstructionStagesDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -896,6 +911,7 @@ namespace Jabalpur_Office.Controllers
 
         //9
         [HttpPost("CrudConstructionWorkDetails_Single")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudConstructionWorkDetails_Single([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -926,6 +942,7 @@ namespace Jabalpur_Office.Controllers
 
         //10
         [HttpPost("CrudConstructionWorkDetails")]
+        [CheckMenuAccess("AUTO")]
         //CrudConstructionWorkDetailsWithImage
         public IActionResult CrudConstructionWorkDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
@@ -995,6 +1012,7 @@ namespace Jabalpur_Office.Controllers
         
         //10
         [HttpPost("CrudConstructionImages")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudConstructionImages([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1204,6 +1222,7 @@ namespace Jabalpur_Office.Controllers
 
         //11
         [HttpPost("GetConstructionDocumentMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetConstructionDocumentMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1235,6 +1254,7 @@ namespace Jabalpur_Office.Controllers
 
         //12
         [HttpPost("CrudConstructionFormFieldDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudConstructionFormFieldDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1264,6 +1284,7 @@ namespace Jabalpur_Office.Controllers
 
         //11
         [HttpPost("GetConstructionFormFieldMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetConstructionFormFieldMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1297,6 +1318,7 @@ namespace Jabalpur_Office.Controllers
 
         //12
         [HttpPost("GetInspectionProgessStatusDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetInspectionProgessStatusDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1327,6 +1349,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudConstructionInspectionDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudConstructionInspectionDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling( () =>
@@ -1390,6 +1413,7 @@ namespace Jabalpur_Office.Controllers
         
 
         [HttpPost("GetConstructionInspectionDetails")]
+        [CheckMenuAccess("VIEW")]
         public  IActionResult GetConstructionInspectionDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1430,6 +1454,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetConstructionInspectionReportDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetConstructionInspectionReportDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1472,6 +1497,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudConstructionInspectionDelayedDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudConstructionInspectionDelayedDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1505,6 +1531,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudVisitorConstructionWorkDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudVisitorConstructionWorkDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1589,6 +1616,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetConstructionVisitorDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetConstructionVisitorDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1630,6 +1658,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudPortalRoleDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudPortalRoleDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1658,6 +1687,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetPortalRoleMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetPortalRoleMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1690,6 +1720,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetWebPortalUserRegDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetWebPortalUserRegDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1751,6 +1782,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudWebPortalUserDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudWebPortalUserDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1779,6 +1811,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetUserLocationMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetUserLocationMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1820,6 +1853,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudUserLocationMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudUserLocationMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1848,6 +1882,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetReasonMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetReasonMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1891,6 +1926,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudReasonMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudReasonMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1919,6 +1955,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("UpdateRowOrderFromCSV")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult UpdateRowOrderFromCSV([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -1947,6 +1984,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetVisitorDetailsList")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetVisitorDetailsList([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -2000,6 +2038,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudAppointmentDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudAppointmentDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -2029,6 +2068,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetAppointmentDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetAppointmentDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -2070,6 +2110,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetShokLetterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetShokLetterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -2108,6 +2149,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudShokLetterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudShokLetterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -2134,6 +2176,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetMediaCategoryDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetMediaCategoryDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -2172,6 +2215,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudMediaCategoryDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudMediaCategoryDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -2409,6 +2453,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudMediaAlbumDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudMediaAlbumDetails([FromForm] string input, [FromForm] List<IFormFile> files) //[FromForm] List<IFormFile> files
         {
             return Ok(ExecuteWithHandling(() =>
@@ -2697,6 +2742,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("DownloadImagesAsPdf")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult DownloadImagesAsPdf([FromBody] object input)
         {
             var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
@@ -2755,6 +2801,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetAlbumCategoryDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetAlbumCategoryDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -2808,6 +2855,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudAlbumCategoryDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudAlbumCategoryDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -2980,6 +3028,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudAlbumDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudAlbumDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3210,6 +3259,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetAllNameMobnoDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetAllNameMobnoDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3238,6 +3288,7 @@ namespace Jabalpur_Office.Controllers
        
 
         [HttpPost("GetBirthdayDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetBirthdayDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3267,7 +3318,7 @@ namespace Jabalpur_Office.Controllers
                 // ✅ Apply pagination only if both values are set
                 if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
                 {
-                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
+                    PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString() , pageIndex.Value, pageSize.Value);
                 }
 
                 return outObj;
@@ -3276,6 +3327,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetAnniversaryDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetAnniversaryDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3315,6 +3367,7 @@ namespace Jabalpur_Office.Controllers
 
         
         [HttpPost("CrudAnniversaryBirthdayDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudAnniversaryBirthdayDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3457,6 +3510,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetSwechchmadMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetSwechchmadMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3522,6 +3576,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudSwechchmadMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudSwechchmadMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3547,6 +3602,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudSwechchmadDocumentDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudSwechchmadDocumentDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3694,6 +3750,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetSwechchmadDocumentDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetSwechchmadDocumentDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3723,6 +3780,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetSwechchmadDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetSwechchmadDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3798,6 +3856,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudSwechchmadDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudSwechchmadDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3823,6 +3882,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetUddhesyaMasDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetUddhesyaMasDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3861,6 +3921,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudUddheshyaMasDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudUddheshyaMasDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3887,6 +3948,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetProfessionDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetProfessionDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3925,6 +3987,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudProfessionDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudProfessionDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3952,6 +4015,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudPurposeMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudPurposeMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -3978,6 +4042,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetPurposeMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetPurposeMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4016,6 +4081,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudLetterRecipientMaster")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudLetterRecipientMaster([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4042,6 +4108,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetLetterRecipientMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetLetterRecipientMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4080,6 +4147,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetDesignationMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetDesignationMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4118,6 +4186,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudDesignationMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudDesignationMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4144,6 +4213,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudDepartmentMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudDepartmentMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4170,6 +4240,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetDepartmentMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetDepartmentMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4206,7 +4277,9 @@ namespace Jabalpur_Office.Controllers
 
             }, nameof(GetDepartmentMasterDetails), out _, skipTokenCheck: false));
         }
+
         [HttpPost("GetTrainMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetTrainMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4245,6 +4318,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudTrainMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudTrainMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4271,6 +4345,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetTrainClassMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetTrainClassMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4307,6 +4382,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudTrainClassMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudTrainClassMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4333,6 +4409,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetLanguageMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetLanguageMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4369,6 +4446,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudLanguageMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudLanguageMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4396,6 +4474,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetNewspaperMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetNewspaperMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4432,6 +4511,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudNewspaperMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudNewspaperMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4458,6 +4538,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudNewsfeedDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudNewsfeedDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4596,6 +4677,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetNewsFeedDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetNewsFeedDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4634,6 +4716,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudConstituencyDesignationMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudConstituencyDesignationMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4660,6 +4743,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetConstituencyDesignationDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetConstituencyDesignationDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4698,6 +4782,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudConstituencyInchargeDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudConstituencyInchargeDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4724,6 +4809,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudAssignBoothDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudAssignBoothDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4752,6 +4838,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudConstituencyMasDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudConstituencyMasDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4780,6 +4867,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetAssemblyInchargeDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetAssemblyInchargeDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4820,6 +4908,7 @@ namespace Jabalpur_Office.Controllers
         
 
         [HttpPost("CrudAssemblyInchargeDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudAssemblyInchargeDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4846,6 +4935,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetMandalMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetMandalMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4896,6 +4986,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetWardMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetWardMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4946,6 +5037,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetShaktikendraMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetShaktikendraMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -4996,6 +5088,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetBoothMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetBoothMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5035,6 +5128,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetAllConstituencyWiseMasDetails")]
+        //[CheckMenuAccess("VIEW")]
         public IActionResult GetAllConstituencyWiseMasDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5066,6 +5160,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetMpProgrammeDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetMpProgrammeDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5118,6 +5213,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetAcBoothWiseConstituencyDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetAcBoothWiseConstituencyDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5148,6 +5244,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudMpProgrammeDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudMpProgrammeDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5326,6 +5423,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudDocumentMasDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudDocumentMasDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5551,6 +5649,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetDocumentMasDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetDocumentMasDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5590,6 +5689,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetEventCalendarMobileList")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetEventCalendarMobileList([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5619,6 +5719,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetEventCategoryMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetEventCategoryMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5657,6 +5758,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudEventCategoryMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudEventCategoryMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5683,6 +5785,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetEventLetterFormatDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetEventLetterFormatDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5722,6 +5825,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudEventLetterFormats")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudEventLetterFormats([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5749,6 +5853,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudPrintLetterFormatDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudPrintLetterFormatDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5775,6 +5880,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudNotesheetLetterFormatDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudNotesheetLetterFormatDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5802,6 +5908,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudContactBook")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudContactBook([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5828,6 +5935,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetContactBookDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetContactBookDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5866,6 +5974,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetLetterTemplateDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetLetterTemplateDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5906,6 +6015,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetVisitorOutwardDocumentDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetVisitorOutwardDocumentDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -5957,6 +6067,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudVisitorOutwardDocumentDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudVisitorOutwardDocumentDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6129,46 +6240,8 @@ namespace Jabalpur_Office.Controllers
             }, nameof(CrudVisitorOutwardDocumentDetails), out _, skipTokenCheck: false));
         }
 
-        //[HttpPost("GetDispatchLetterDetails")]
-        //public IActionResult GetDispatchLetterDetails([FromBody] object input)
-        //{
-        //    return Ok(ExecuteWithHandling(() =>
-        //    {
-        //        var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
-        //        var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
-        //        var filterKeys = ApiHelper.GetFilteredKeys(data);
-
-        //        // Extract search, paging
-        //        var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
-
-        //        // Step 2: Build SQL parameters (advanced dynamic approach)
-        //        var (paramList, pStatus, pMsg, pTotalCount, pWhere) = SqlParamBuilderWithAdvanced.BuildAdvanced(
-        //            data: data,
-        //            keys: filterKeys,
-        //            mpSeatId: pJWT_MP_SEAT_ID,
-        //            includeTotalCount: true,
-        //            includeWhere: true,
-        //            pageIndex: pageIndex,
-        //            pageSize: pageSize
-        //        );
-
-        //        DataTable dt = _core.ExecProcDt("ReactDispatchLetterDetails", paramList.ToArray());
-        //        ApiHelper.SetDataTableListOutput(dt, outObj);
-        //        SetOutput(pStatus, pMsg, outObj);
-
-        //        // ✅ Apply pagination only if both values are set
-        //        if (pTotalCount != null && pageIndex.HasValue && pageSize.HasValue)
-        //        {
-        //            PaginationHelper.ApplyPagination(outObj, pTotalCount.Value?.ToString(), pageIndex.Value, pageSize.Value);
-        //        }
-
-        //        return outObj;
-
-        //    }, nameof(GetDispatchLetterDetails), out _, skipTokenCheck: false));
-        //}
-
-
         [HttpPost("GetVisitorWorkStatusDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetVisitorWorkStatusDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6222,6 +6295,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudVisitorWorkStatusDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudVisitorWorkStatusDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6249,6 +6323,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetDistrictMasDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetDistrictMasDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6290,6 +6365,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("CrudDistrictMasDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult CrudDistrictMasDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6318,6 +6394,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetSearchContactVoterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetSearchContactVoterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6357,6 +6434,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetandAppendContactdetailstoVisitor")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetandAppendContactdetailstoVisitor([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6388,6 +6466,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudVoterContactDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudVoterContactDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6414,6 +6493,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudVisitorMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudVisitorMasterDetails([FromForm] string input, [FromForm] List<IFormFile> files)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6575,6 +6655,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetVisitorMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetVisitorMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6614,6 +6695,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudVisitorDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudVisitorDetails([FromForm] string input, [FromForm] List<IFormFile> VIS_INWARD_FILE, [FromForm] string VIS_WEBCAM_FILE=null)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -6901,6 +6983,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetVisitorWorkDetailsList")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetVisitorWorkDetailsList([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7009,6 +7092,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetReasonDetailsFormFieldData")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetReasonDetailsFormFieldData([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7051,6 +7135,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudVisitorReasonDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudVisitorReasonDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7077,6 +7162,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudDraftLetterHistoryDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudDraftLetterHistoryDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7103,6 +7189,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudMailMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudMailMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7130,6 +7217,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetMailMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetMailMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7170,6 +7258,7 @@ namespace Jabalpur_Office.Controllers
 
         //Its Universal For Letter Print - Except Visitor Letter
         [HttpPost("GetLetterPrintDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetLetterPrintDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7201,6 +7290,7 @@ namespace Jabalpur_Office.Controllers
         //Its Letter Print -  Visitor Letter
 
         [HttpPost("GetVisitorDetailsForLetterPrint")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetVisitorDetailsForLetterPrint([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7229,6 +7319,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetDetailsForNoteSheetLetterPrint")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetDetailsForNoteSheetLetterPrint([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7257,6 +7348,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetUniversalDropDownList")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetUniversalDropDownList([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7286,6 +7378,7 @@ namespace Jabalpur_Office.Controllers
 
         // Assembly And Booth Wise 
         [HttpPost("GetAssemblyBoothWisePPPCSummaryDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetAssemblyBoothWisePPPCSummaryDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7325,6 +7418,7 @@ namespace Jabalpur_Office.Controllers
 
         // Assembly - Mandotory
         [HttpPost("GetPPPCSummaryDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetPPPCSummaryDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7363,6 +7457,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetSingleVoterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetSingleVoterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7401,6 +7496,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetVoterIdCardDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetVoterIdCardDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7439,6 +7535,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudVoterCardDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudVoterCardDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7467,6 +7564,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetVoterListDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetVoterListDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7506,6 +7604,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetKeyVotersDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetKeyVotersDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7544,6 +7643,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudKeyVotersDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudKeyVotersDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7570,6 +7670,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetTirthDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetTirthDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7609,6 +7710,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudTirthDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudTirthDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7637,6 +7739,7 @@ namespace Jabalpur_Office.Controllers
 
 
         [HttpPost("GetVisitorWithPeoplesDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetVisitorWithPeoplesDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7676,6 +7779,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudVisitorWithPeopleDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudVisitorWithPeopleDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7702,7 +7806,9 @@ namespace Jabalpur_Office.Controllers
             }, nameof(CrudVisitorWithPeopleDetails), out _, skipTokenCheck: false));
         }
 
+        //Not Working
         [HttpPost("GetDynamicColumnList")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetDynamicColumnList([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7734,6 +7840,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudProcedureColumnMappingTableDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudProcedureColumnMappingTableDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7760,6 +7867,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetProcedureColumnMappingTableDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetProcedureColumnMappingTableDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7928,6 +8036,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudGoogleDraftLetterSettings")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudGoogleDraftLetterSettings([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7954,6 +8063,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetGoogleDraftLetterSettings")] //152.
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetGoogleDraftLetterSettings([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7965,7 +8075,8 @@ namespace Jabalpur_Office.Controllers
 
        
         
-        [HttpPost("GetUniversalEventMobileList")] 
+        [HttpPost("GetUniversalEventMobileList")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetUniversalEventMobileList([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7975,7 +8086,8 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetUniversalEventMobileList), out _, skipTokenCheck: false));
         }
 
-        [HttpPost("GetSMSTemplateMasterDetails")] 
+        [HttpPost("GetSMSTemplateMasterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetSMSTemplateMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7986,7 +8098,8 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetSMSTemplateMasterDetails), out _, skipTokenCheck: false));
         }
 
-        [HttpPost("CrudSMSTemplateMasterDetails")] 
+        [HttpPost("CrudSMSTemplateMasterDetails")]
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudSMSTemplateMasterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -7997,6 +8110,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetDispatchLetterDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetDispatchLetterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -8015,6 +8129,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("CrudDispatchLetterDetails")] //109.
+        [CheckMenuAccess("AUTO")]
         public IActionResult CrudDispatchLetterDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
@@ -8025,6 +8140,7 @@ namespace Jabalpur_Office.Controllers
         }
 
         [HttpPost("GetTableHistoryDetails")]
+        [CheckMenuAccess("VIEW")]
         public IActionResult GetTableHistoryDetails([FromBody] object input)
         {
             return Ok(ExecuteWithHandling(() =>
