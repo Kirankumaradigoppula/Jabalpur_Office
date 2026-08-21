@@ -62,24 +62,45 @@ namespace Jabalpur_Office.Filters
                     return;
                 }
 
-                //string? pagePath = context.HttpContext.Request.Headers["PagePath"].FirstOrDefault();
                 string? pagePath = httpContext.Request.Headers["PagePath"].FirstOrDefault();
-                //string? lastPath =  pagePath?.Split('/').LastOrDefault();
                 string lastPath = string.Empty;
+
 
                 if (!string.IsNullOrWhiteSpace(pagePath))
                 {
-                    lastPath = pagePath.Split('/',
-                                StringSplitOptions.RemoveEmptyEntries)
-                                .LastOrDefault() ?? "";
+
+
+                    var parts = pagePath
+                          .Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+
+
+                    if (parts.Length > 1)
+                    {
+                        if (parts.Length > 2 &&
+                         parts[1].Equals("labharthiview", StringComparison.OrdinalIgnoreCase) &&
+                         (
+                             parts[2].Equals("MLA", StringComparison.OrdinalIgnoreCase) ||
+                             parts[2].Equals("MANTRI", StringComparison.OrdinalIgnoreCase) ||
+                             parts[2].Equals("JANSAMPARKNIDHI", StringComparison.OrdinalIgnoreCase) ||
+                             parts[2].Equals("VIDHAYAKNIDHI", StringComparison.OrdinalIgnoreCase)
+                         ))
+                        {
+                            lastPath = $"{parts[1]}/{parts[2]}";
+                        }
+                        else
+                        {
+                            lastPath = parts[1];
+                        }
+                    }
                 }
 
                 // =====================================================
                 // ✅ Get API Name
                 // =====================================================
-                  var endpoint = context.ActionDescriptor as ControllerActionDescriptor;
-                  
-                  string apiName = endpoint?.ActionName ?? string.Empty;
+                var endpoint = context.ActionDescriptor as ControllerActionDescriptor;
+
+                string apiName = endpoint?.ActionName ?? string.Empty;
                 // =====================================================
                 // ✅ Resolve Action Type
                 // =====================================================
@@ -97,56 +118,140 @@ namespace Jabalpur_Office.Filters
                             if (!string.IsNullOrWhiteSpace(jsonString))
                             {
                                 using JsonDocument json = JsonDocument.Parse(jsonString);
-                                if (json.RootElement.TryGetProperty(
-                                  "FLAG",
-                                  out JsonElement flagElement))
+
+                                // =================================================
+                                // New Modification 20-08-2026 For Construction Reg
+                                // =================================================
+                                JsonElement root = json.RootElement;
+
+                                // =================================================
+                                // SPECIAL MODULE : contractionreg
+                                // =================================================
+
+                                if (lastPath.Equals(
+                                "contractionreg",
+                                StringComparison.OrdinalIgnoreCase))
                                 {
-                                    string flag = flagElement.GetString()?
-                                                .Trim()
-                                                .ToUpperInvariant() ?? "";
-
-                                    actionType = flag switch
+                                    // -------------------------------------------------
+                                    // contractionreg DOES NOT USE FLAG
+                                    //
+                                    // STAGES_MAS_ID exists     => UPDATE
+                                    // STAGES_MAS_ID not exists => CREATE
+                                    //
+                                    // DELETE is NOT supported.
+                                    // -------------------------------------------------
+                                    int stagesMasId = 0;
+                                    string cwCode = string.Empty;
+                                    //STAGES_MAS_ID
+                                    if (root.TryGetProperty(
+                                      "STAGES_MAS_ID",
+                                      out JsonElement stagesMasIdElement))
                                     {
-                                        "SAVE" => "C",
-                                        "SAVE_CATEGORY" => "C",
-                                        "SAVE_DISPATCH_STATUS" => "C",
-                                        "TRY" => "C",
+                                        if (stagesMasIdElement.ValueKind == JsonValueKind.Number)
+                                        {
+                                            stagesMasId = stagesMasIdElement.GetInt32();
+                                        }
+                                        else if (stagesMasIdElement.ValueKind == JsonValueKind.String)
+                                        {
+                                            int.TryParse(
+                                                stagesMasIdElement.GetString(),
+                                                out stagesMasId);
+                                        }
+                                    }
+                                    // CW_CODE
+                                    if (root.TryGetProperty(
+                                      "CW_CODE",
+                                      out JsonElement cwCodeElement))
+                                    {
+                                        cwCode = cwCodeElement.GetString()?
+                                            .Trim()
+                                            ?? "";
+                                    }
+                                    // Both values are required
+                                    if (stagesMasId <= 0 ||
+                                        string.IsNullOrWhiteSpace(cwCode))
+                                    {
+                                        actionType = "VIEW";
+                                    }
+                                    else
+                                    {
+                                        bool exists =
+                                            await CheckContractionRegExistsAsync(
+                                                core,
+                                                stagesMasId,
+                                                cwCode,
+                                                mpSeatId);
 
-                                        "UPDATE" => "U",
-                                        "UPDATE_DESCRIPTION" => "U",
-                                        "DOB_UPDATE" => "U",
-                                        "DOA_UPDATE" => "U",
-                                        "CHECK_NEGATIVE" => "U",
-                                        "APPO_STATUS" => "U",
-                                        "UPDATE_CATEGORY" => "U",
-                                        "GOOGLE_DRAFT_LETTER" => "U",
-                                        "SAVE_LETTER" => "U",
-                                        "UPDATE_LETTER" => "U",
-                                        "LIKED_LETTER" => "U",
-                                        "TO_ATTEND" => "U",
-                                        "UPDATE_OTP" => "U",
-                                        "SWCCHAMAD_DETAILS" => "U",
-                                        "U_TRY" => "U",
-                                        "UPDATE_TRANSFER" => "U",
-                                        "ATTENDED_STATUS" => "U",
-                                        "UPDATE_VISIBLE_STATUS" => "U",
-                                        
+                                        actionType = exists ? "U" : "C";
+                                    }
 
-                                        "DELETE" => "D",
-                                        "DELETE_IMAGE" => "D",
-                                        "DOB_DELETE" => "D",
-                                        "DOA_DELETE" => "D",
-                                        "DELETE_CATEGORY" => "D",
-                                        "DELETE_GOOGLE_DRAFT_LETTER" => "D",
+                                }
+                                else
+                                {
+                                    // =================================================
+                                    // End New Modification 20-08-2026 For Construction Reg
+                                    // =================================================
+                                    // =================================================
+                                    // NORMAL MODULES : FLAG BASED
+                                    // =================================================
+                                    if (json.RootElement.TryGetProperty(
+                                       "FLAG",
+                                       out JsonElement flagElement))
+                                    {
+                                        string flag = flagElement.GetString()?
+                                                    .Trim()
+                                                    .ToUpperInvariant() ?? "";
 
-                                        _ => "VIEW"
-                                    };
+                                        actionType = flag switch
+                                        {
+                                            "SAVE" => "C",
+                                            "SAVE_CATEGORY" => "C",
+                                            "SAVE_DISPATCH_STATUS" => "C",
+                                            "TRY" => "C",
+
+
+                                            "UPDATE" => "U",
+                                            "UPDATE_DESCRIPTION" => "U",
+                                            "DOB_UPDATE" => "U",
+                                            "DOA_UPDATE" => "U",
+                                            "CHECK_NEGATIVE" => "U",
+                                            "APPO_STATUS" => "U",
+                                            "UPDATE_CATEGORY" => "U",
+                                            "GOOGLE_DRAFT_LETTER" => "U",
+                                            "SAVE_LETTER" => "U",
+                                            "UPDATE_LETTER" => "U",
+                                            "LIKED_LETTER" => "U",
+                                            "TO_ATTEND" => "U",
+                                            "UPDATE_OTP" => "U",
+                                            "SWCCHAMAD_DETAILS" => "U",
+                                            "U_TRY" => "U",
+                                            "UPDATE_TRANSFER" => "U",
+                                            "ATTENDED_STATUS" => "U",
+                                            "UPDATE_VISIBLE_STATUS" => "U",
+
+
+
+                                            "DELETE" => "D",
+                                            "DELETE_IMAGE" => "D",
+                                            "DOB_DELETE" => "D",
+                                            "DOA_DELETE" => "D",
+                                            "DELETE_CATEGORY" => "D",
+                                            "DELETE_GOOGLE_DRAFT_LETTER" => "D",
+
+                                            _ => "VIEW"
+                                        };
+                                    }
                                 }
                             }
                         }
                     }
-                    catch { 
-                       actionType = "VIEW";
+                    catch (JsonException)
+                    {
+                        actionType = "VIEW";
+                    }
+                    catch
+                    {
+                        actionType = "VIEW";
                     }
                 }
 
@@ -193,99 +298,99 @@ namespace Jabalpur_Office.Filters
                 // =====================================================
                 // ❌ DB Validation Failed
                 // =====================================================
-                  if (statusCode != 200)
-                  {
-                      context.Result = new ObjectResult(new
-                      {
-                          statusCode,
-                          message
-                      })
-                      { StatusCode = statusCode };
-                  
-                      return;
-                  }
+                if (statusCode != 200)
+                {
+                    context.Result = new ObjectResult(new
+                    {
+                        statusCode,
+                        message
+                    })
+                    { StatusCode = statusCode };
+
+                    return;
+                }
                 // =====================================================
                 // ❌ Menu Access Check
                 // =====================================================
-                  if (hasAccess == 0)
-                  {
-                      context.Result = new ObjectResult(new WrapperListData
-                      {
-                          StatusCode = 400,
-                          Message = "This user does not have permission to access this menu. Access to the menu has been denied.",
-                          LoginStatus = userName ?? ""
-                      })
-                      { StatusCode = 400 };
-                  
-                      return;
-                  }
+                if (hasAccess == 0)
+                {
+                    context.Result = new ObjectResult(new WrapperListData
+                    {
+                        StatusCode = 400,
+                        Message = "This user does not have permission to access this menu. Access to the menu has been denied.",
+                        LoginStatus = userName ?? ""
+                    })
+                    { StatusCode = 400 };
+
+                    return;
+                }
 
                 // =====================================================
                 // ❌ CRUD Permission Check
                 // =====================================================
-                    bool isAllowed = actionType switch
+                bool isAllowed = actionType switch
+                {
+                    "C" => c == 1,
+                    "U" => u == 1,
+                    "D" => d == 1,
+                    "VIEW" => true,
+                    _ => false
+                };
+                if (!isAllowed)
+                {
+                    string permissionMessage = actionType switch
                     {
-                        "C" => c == 1,
-                        "U" => u == 1,
-                        "D" => d == 1,
-                        "VIEW" => true,
-                        _ => false
+                        //"C" => "This user does not have permission to create a new record. Create access has been denied.",
+                        // "D" => "This user does not have permission to delete the record. Delete access has been denied.",
+                        "C" => "You do not have permission to create new records in this module.Please contact your super admin.",
+                        "U" => "You do not have permission to edit records in this module. Please contact your super admin.",
+                        "D" => "You do not have permission to delete records in this module. Please contact your super admin.",
+                        _ => "Permission denied."
                     };
-                    if (!isAllowed)
+
+                    context.Result = new ObjectResult(new WrapperListData
                     {
-                        string permissionMessage = actionType switch
-                        {
-                            //"C" => "This user does not have permission to create a new record. Create access has been denied.",
-                            // "D" => "This user does not have permission to delete the record. Delete access has been denied.",
-                            "C" => "You do not have permission to create new records in this module.Please contact your super admin.",
-                            "U" => "You do not have permission to edit records in this module. Please contact your super admin.",
-                            "D" => "You do not have permission to delete records in this module. Please contact your super admin.",
-                            _ => "Permission denied."
-                        };
-                    
-                        context.Result = new ObjectResult(new WrapperListData
-                        {
-                            StatusCode = 403,
-                            Message = permissionMessage,
-                            //RetID = 0,
-                            LoginStatus = userName ?? "",
-                            ExtraData = []//new Dictionary<string, object?>()
-                        })
-                        {
-                            StatusCode = 403
-                        };
-                    
-                    
-                    
-                        return;
-                    }
+                        StatusCode = 403,
+                        Message = permissionMessage,
+                        //RetID = 0,
+                        LoginStatus = userName ?? "",
+                        ExtraData = []//new Dictionary<string, object?>()
+                    })
+                    {
+                        StatusCode = 403
+                    };
+
+
+
+                    return;
+                }
 
                 // =====================================================
                 // ✅ Continue Controller Execution
                 // =====================================================
-                    var executedContext = await next();
+                var executedContext = await next();
                 // =====================================================
                 // ✅ Get API Response (outObj)
                 // =====================================================
-                  if (executedContext.Result is OkObjectResult okResult)
-                  {
-                      // Full API response
-                      var responseObject = okResult.Value;
-                  
-                      // =====================================================
-                      // ✅ If Response Type Is WrapperListData
-                      // =====================================================
-                      if (responseObject is WrapperListData outObj)
-                      {
-                          // Example Access
-                          string responseMessage = outObj.Message ?? "";
-                          int responseStatus = outObj.StatusCode;
-                          //int retId = outObj.RetID;
-                          // Optional Logging
-                          Console.WriteLine(
-                              $"API Success : {responseMessage}");
-                      }
-                  }
+                if (executedContext.Result is OkObjectResult okResult)
+                {
+                    // Full API response
+                    var responseObject = okResult.Value;
+
+                    // =====================================================
+                    // ✅ If Response Type Is WrapperListData
+                    // =====================================================
+                    if (responseObject is WrapperListData outObj)
+                    {
+                        // Example Access
+                        string responseMessage = outObj.Message ?? "";
+                        int responseStatus = outObj.StatusCode;
+                        //int retId = outObj.RetID;
+                        // Optional Logging
+                        Console.WriteLine(
+                            $"API Success : {responseMessage}");
+                    }
+                }
 
 
             }
@@ -299,6 +404,27 @@ namespace Jabalpur_Office.Filters
                 })
                 { StatusCode = 400 };
             }
+        }
+
+        // =============================================================
+        // Check contractionreg STAGES_MAS_ID
+        // =============================================================
+        private async Task<bool> CheckContractionRegExistsAsync(
+        IsssCore core,
+        int stagesMasId,
+        string cwCode,
+        string mpSeatId)
+        {
+            var param = new[]
+            {
+                new SqlParameter( "@pMP_SEAT_ID",mpSeatId),
+                new SqlParameter( "@pSTAGES_MAS_ID",stagesMasId),
+                new SqlParameter( "@pCW_CODE",cwCode)
+            };
+
+            DataTable dt = core.ExecProcDt("ReactCheckContractionRegExists", param);
+
+            return dt.Rows[0]["IS_EXISTS"] != DBNull.Value && Convert.ToInt32(dt.Rows[0]["IS_EXISTS"]) == 1;
         }
 
     }
