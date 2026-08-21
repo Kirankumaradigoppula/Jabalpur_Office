@@ -673,8 +673,6 @@ namespace Jabalpur_Office.Controllers
                 var filterKeys = ApiHelper.GetFilteredKeys(data);
                 var (pSearch, pageIndex, pageSize) = ApiHelper.GetSearchAndPagingObject(data);
 
-
-
                 // ------------------------------------
                 // 2. SQL Parameters
                 // ------------------------------------
