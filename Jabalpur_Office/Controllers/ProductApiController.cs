@@ -842,7 +842,7 @@ namespace Jabalpur_Office.Controllers
 
         }
 
-        //7
+        //7 19082026_1
         [HttpPost("GetConstructionFormFieldDetails")]
         [CheckMenuAccess("VIEW")]
         public IActionResult GetConstructionFormFieldDetails([FromBody] object input)
@@ -1220,7 +1220,7 @@ namespace Jabalpur_Office.Controllers
 
         }
 
-        //11
+        //11 19082026_1
         [HttpPost("GetConstructionDocumentMasterDetails")]
         [CheckMenuAccess("VIEW")]
         public IActionResult GetConstructionDocumentMasterDetails([FromBody] object input)
@@ -1954,6 +1954,7 @@ namespace Jabalpur_Office.Controllers
 
         }
 
+        //19082026
         [HttpPost("UpdateRowOrderFromCSV")]
         [CheckMenuAccess("AUTO")]
         public IActionResult UpdateRowOrderFromCSV([FromBody] object input)
@@ -3509,6 +3510,7 @@ namespace Jabalpur_Office.Controllers
             }, nameof(CrudAnniversaryBirthdayDetails), out _, skipTokenCheck: false));
         }
 
+        //19082026
         [HttpPost("GetSwechchmadMasterDetails")]
         [CheckMenuAccess("VIEW")]
         public IActionResult GetSwechchmadMasterDetails([FromBody] object input)
@@ -3575,6 +3577,7 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetSwechchmadMasterDetails), out _, skipTokenCheck: false));
         }
 
+        //19082026
         [HttpPost("CrudSwechchmadMasterDetails")]
         [CheckMenuAccess("AUTO")]
         public IActionResult CrudSwechchmadMasterDetails([FromBody] object input)
@@ -3601,6 +3604,7 @@ namespace Jabalpur_Office.Controllers
             }, nameof(CrudSwechchmadMasterDetails), out _, skipTokenCheck: false));
         }
 
+        //19082026
         [HttpPost("CrudSwechchmadDocumentDetails")]
         [CheckMenuAccess("AUTO")]
         public IActionResult CrudSwechchmadDocumentDetails([FromForm] string input, [FromForm] List<IFormFile> files)
@@ -3749,6 +3753,7 @@ namespace Jabalpur_Office.Controllers
             }, nameof(CrudSwechchmadDocumentDetails), out _, skipTokenCheck: false));
         }
 
+        //19082026
         [HttpPost("GetSwechchmadDocumentDetails")]
         [CheckMenuAccess("VIEW")]
         public IActionResult GetSwechchmadDocumentDetails([FromBody] object input)
@@ -3778,7 +3783,7 @@ namespace Jabalpur_Office.Controllers
         }
 
 
-
+        //19082026
         [HttpPost("GetSwechchmadDetails")]
         [CheckMenuAccess("VIEW")]
         public IActionResult GetSwechchmadDetails([FromBody] object input)
@@ -3854,7 +3859,7 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetSwechchmadDetails), out _, skipTokenCheck: false));
         }
 
-
+        //19082026
         [HttpPost("CrudSwechchmadDetails")]
         [CheckMenuAccess("AUTO")]
         public IActionResult CrudSwechchmadDetails([FromBody] object input)
@@ -3881,6 +3886,7 @@ namespace Jabalpur_Office.Controllers
             }, nameof(CrudSwechchmadDetails), out _, skipTokenCheck: false));
         }
 
+        //19082026
         [HttpPost("GetUddhesyaMasDetails")]
         [CheckMenuAccess("VIEW")]
         public IActionResult GetUddhesyaMasDetails([FromBody] object input)
@@ -3920,6 +3926,7 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetUddhesyaMasDetails), out _, skipTokenCheck: false));
         }
 
+        //19082026
         [HttpPost("CrudUddheshyaMasDetails")]
         [CheckMenuAccess("AUTO")]
         public IActionResult CrudUddheshyaMasDetails([FromBody] object input)
