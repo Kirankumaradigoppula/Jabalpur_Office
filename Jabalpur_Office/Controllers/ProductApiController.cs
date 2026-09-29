@@ -6501,7 +6501,7 @@ namespace Jabalpur_Office.Controllers
 
         [HttpPost("CrudVisitorMasterDetails")]
         [CheckMenuAccess("AUTO")]
-        public IActionResult CrudVisitorMasterDetails([FromForm] string input, [FromForm] List<IFormFile> files)
+        public IActionResult CrudVisitorMasterDetails([FromForm] string input, [FromForm] List<IFormFile> files, [FromForm] string? VM_WEBCAM_FILE = null)
         {
             return Ok(ExecuteWithHandling(() =>
             {
@@ -6512,6 +6512,7 @@ namespace Jabalpur_Office.Controllers
                 var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
                 var filterKeys = ApiHelper.GetFilteredKeys(data);
                 string pImagePath = string.Empty;
+                string pWebCamImagePath = string.Empty; //28092026
                 string flag = data.ContainsKey("FLAG") ? data["FLAG"]?.ToString() ?? "" : "";
 
                 if (flag == "SAVE" && files?.Any() == true)
@@ -6536,21 +6537,28 @@ namespace Jabalpur_Office.Controllers
                         return outObj;
                     }
 
-                    // Validate file size (max 2MB)
-                    //double fileSizeInMB = file.Length / 1024.0 / 1024.0;
-                    //if (fileSizeInMB > 2)
-                    //{
-                    //    outObj.StatusCode = 400;
-                    //    outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
-                    //    outObj.LoginStatus = pJWT_LOGIN_NAME;
-                    //    return outObj;
-                    //}
+                    
                 }
                 if (flag == "DELETE" || flag == "DELETE_IMAGE")
                 {
                     string pQry = @"SELECT  FILE_PATH FROM VISITOR_MASTER  WHERE MP_SEAT_ID = @MP_SEAT_ID AND VISITOR_MAS_ID=@VISITOR_MAS_ID";
                     // Get old MEDIA_DATE from DB (before update)
                     pImagePath = Convert.ToString(
+                         _core.ExecScalarText(
+                              pQry,
+                               new[] {
+                            new SqlParameter("@MP_SEAT_ID", pJWT_MP_SEAT_ID),
+                            new SqlParameter("@VISITOR_MAS_ID", data["VISITOR_MAS_ID"]?.ToString())
+
+                               }
+                          )
+                       );
+                }
+                if (flag == "DELETE" )
+                {
+                    string pQry = @"SELECT  VM_WEBCAM_PATH FROM VISITOR_MASTER  WHERE MP_SEAT_ID = @MP_SEAT_ID AND VISITOR_MAS_ID=@VISITOR_MAS_ID";
+
+                    pWebCamImagePath = Convert.ToString(
                          _core.ExecScalarText(
                               pQry,
                                new[] {
@@ -6594,15 +6602,7 @@ namespace Jabalpur_Office.Controllers
                             return outObj;
                         }
 
-                        // Validate file size (max 2MB)
-                        //double fileSizeInMB = file.Length / 1024.0 / 1024.0;
-                        //if (fileSizeInMB > 2)
-                        //{
-                        //    outObj.StatusCode = 400;
-                        //    outObj.Message = $"File '{file.FileName}' exceeds 2MB limit.";
-                        //    outObj.LoginStatus = pJWT_LOGIN_NAME;
-                        //    return outObj;
-                        //}
+                        
                         // Prepare storage paths
                         string storageRoot = _settings.BasePath;
                         string baseFolder = Path.Combine("image", $"MP_{pJWT_MP_SEAT_ID}", "visitorAttachedFiles");
@@ -6631,6 +6631,37 @@ namespace Jabalpur_Office.Controllers
                         string vQryUpdateStatus = $"UPDATE VISITOR_MASTER SET VIS_FILE='" + FileName + "' ,FILE_PATH='" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND VISITOR_MAS_ID='" + outObj.RetID + "' ";
                         _core.ExecNonQuery(vQryUpdateStatus);
                     }
+                    //28092026 start WEBCAM IMAGE SAVE
+                    if (!string.IsNullOrWhiteSpace(VM_WEBCAM_FILE))
+                    {
+                        var parts = VM_WEBCAM_FILE.Split(',');
+                        if (parts.Length == 2)
+                        {
+                            byte[] imgBytes = Convert.FromBase64String(parts[1]);
+
+                            string storageRoot = _settings.BasePath;
+
+                            string baseFolder = Path.Combine("image", $"MP_{pJWT_MP_SEAT_ID}", "WebCamImg");
+
+                            string finalFolder = Path.Combine(storageRoot, baseFolder);
+
+                            Directory.CreateDirectory(finalFolder);
+
+                            string fileName = $"{pJWT_MP_SEAT_ID}_WebCam_{outObj.RetID}.jpg";
+                            string relativePath = Path.Combine(baseFolder, fileName).Replace("\\", "/");
+                            string fullPath = Path.Combine(finalFolder, fileName);
+
+                            if (System.IO.File.Exists(fullPath))
+                                System.IO.File.Delete(fullPath);
+
+                            System.IO.File.WriteAllBytes(fullPath, imgBytes);
+
+                            string vQryUpdateStatus = $"UPDATE VISITOR_MASTER SET VM_WEBCAM_IMG='" + fileName + "' ,VM_WEBCAM_PATH='" + relativePath + "' WHERE MP_SEAT_ID='" + pJWT_MP_SEAT_ID + "' AND VISITOR_MAS_ID='" + outObj.RetID + "' ";
+                            _core.ExecNonQuery(vQryUpdateStatus);
+
+                        }
+                    }
+                    //28092026 End 
                     if (flag == "DELETE" || flag == "DELETE_IMAGE")
                     {
                         // Base folder
@@ -6643,7 +6674,25 @@ namespace Jabalpur_Office.Controllers
                             {
                                 System.IO.File.Delete(fullFilePath);
                                 // ✅ Step 2: Check parent folder
-                                string parentFolder = Path.GetDirectoryName(fullFilePath);
+                                string? parentFolder = Path.GetDirectoryName(fullFilePath);
+                                if (!string.IsNullOrWhiteSpace(parentFolder) &&
+                                         Directory.Exists(parentFolder) &&
+                                        !Directory.EnumerateFileSystemEntries(parentFolder).Any())
+                                {
+                                    Directory.Delete(parentFolder, true); // delete folder if empty
+                                }
+                            }
+                        }
+                        //28092026
+                        if (!string.IsNullOrEmpty(pWebCamImagePath) && flag == "DELETE")
+                        {
+                            // Build full file path
+                            string fullFilePath = Path.Combine(baseFolderPath, pWebCamImagePath.Replace("/", "\\"));
+                            if (!string.IsNullOrWhiteSpace(fullFilePath) && System.IO.File.Exists(fullFilePath))
+                            {
+                                System.IO.File.Delete(fullFilePath);
+                                // ✅ Step 2: Check parent folder
+                                string? parentFolder = Path.GetDirectoryName(fullFilePath);
                                 if (!string.IsNullOrWhiteSpace(parentFolder) &&
                                          Directory.Exists(parentFolder) &&
                                         !Directory.EnumerateFileSystemEntries(parentFolder).Any())
