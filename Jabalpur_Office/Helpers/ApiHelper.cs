@@ -148,8 +148,8 @@ namespace Jabalpur_Office.Helpers
             public static (List<SqlParameter> ParamList, SqlParameter pStatus, SqlParameter pMsg) BuildWithOutput(
                 Dictionary<string, object> values,
                 IEnumerable<string> keys,
-                object mpSeatId = null,
-                object userId = null)
+                object? mpSeatId = null,
+                object? userId = null)
             {
                 var paramList = new List<SqlParameter>();
 
@@ -1191,6 +1191,8 @@ namespace Jabalpur_Office.Helpers
 
             return p;
         }
+
+
 
     }
 }
