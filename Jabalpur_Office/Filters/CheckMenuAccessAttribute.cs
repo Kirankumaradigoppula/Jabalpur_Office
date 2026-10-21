@@ -211,6 +211,7 @@ namespace Jabalpur_Office.Filters
 
 
                                             "UPDATE" => "U",
+                                            "UPDATE_IMAGE" => "U",
                                             "UPDATE_DESCRIPTION" => "U",
                                             "DOB_UPDATE" => "U",
                                             "DOA_UPDATE" => "U",
