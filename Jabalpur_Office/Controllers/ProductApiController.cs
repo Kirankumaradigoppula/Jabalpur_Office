@@ -34,6 +34,8 @@ using Org.BouncyCastle.Asn1.Cmp;
 using UAParser;
 using UAParser.Objects;
 using System.Security.Cryptography;
+using SkiaSharp;
+
 
 
 
@@ -5916,13 +5918,33 @@ namespace Jabalpur_Office.Controllers
 
         [HttpPost("CrudContactBook")]
         [CheckMenuAccess("AUTO")]
-        public IActionResult CrudContactBook([FromBody] object input)
+        public IActionResult CrudContactBook([FromForm] string input, [FromForm] List<IFormFile> files, [FromForm] string? CONTACT_WEBCAM_FILE = null)
         {
             return Ok(ExecuteWithHandling(() =>
             {
-                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
-                var data = ApiHelper.ToObjectDictionary(rawData); // Dictionary<string, object>
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                    string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+                );
+
+                var data = ApiHelper.ToObjectDictionary(rawData);
                 var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                string flag = data.TryGetValue("FLAG", out var flagObj)
+                    ? Convert.ToString(flagObj) ?? string.Empty
+                    : string.Empty;
+
+                string tableType = data.TryGetValue("TABLE_TYPE", out var tableObj)
+                    ? Convert.ToString(tableObj) ?? string.Empty
+                    : string.Empty;
+
+                string voterNo = data.TryGetValue("VOTER_NO", out var voterObj)
+                    ? Convert.ToString(voterObj) ?? string.Empty
+                    : string.Empty;
+
+                flag = flag.Trim().ToUpperInvariant();
+                tableType = tableType.Trim().ToUpperInvariant();
+
 
                 // Step 2: Build SQL parameters (advanced dynamic approach)
                 var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
@@ -5933,8 +5955,299 @@ namespace Jabalpur_Office.Controllers
                     includeRetId: true
                 );
 
+                var fileNameParam = new SqlParameter(
+                   "@pFILE_NAME", SqlDbType.NVarChar, -1)
+                {
+                    Direction = ParameterDirection.Output
+                };
+
+                var filePathParam = new SqlParameter(
+                    "@pFILE_PATH", SqlDbType.NVarChar, -1)
+                {
+                    Direction = ParameterDirection.Output
+                };
+
+                paramList.Add(fileNameParam);
+                paramList.Add(filePathParam);
+
                 DataTable dt = _core.ExecProcDt("ReactCrudContactBook", paramList.ToArray());
                 SetOutputParamsWithRetId(pStatus, pMsg, pRetId, outObj);
+
+                outObj.LoginStatus = pJWT_LOGIN_NAME;
+
+                if (outObj.StatusCode != 200)
+                    return outObj;
+
+                string storageRoot = Path.GetFullPath(_settings.BasePath);
+
+                string storedFileName = fileNameParam.Value == DBNull.Value
+                    ? string.Empty
+                    : Convert.ToString(fileNameParam.Value) ?? string.Empty;
+
+                string storedPath = filePathParam.Value == DBNull.Value
+                    ? string.Empty
+                    : Convert.ToString(filePathParam.Value) ?? string.Empty;
+
+                bool hasUploadedFile = files?.Any() == true;
+                bool hasWebcamImage =
+                    !string.IsNullOrWhiteSpace(CONTACT_WEBCAM_FILE);
+
+                // ----------------------------------------------------
+                // SAVE / UPDATE: image handling
+                // ----------------------------------------------------
+                if (flag is "SAVE" or "UPDATE")
+                {
+                    if (!hasUploadedFile && !hasWebcamImage)
+                        return outObj;
+
+                    if (hasUploadedFile && hasWebcamImage)
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message =
+                            "Upload either a  file or a webcam image, not both.";
+                        return outObj;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(storedFileName) ||
+                        string.IsNullOrWhiteSpace(storedPath))
+                    {
+                        outObj.StatusCode = 500;
+                        outObj.Message =
+                            "The stored procedure did not return the required file name or path.";
+                        return outObj;
+                    }
+
+                    string fileName = Path.GetFileName(storedFileName);
+
+                    if (string.IsNullOrWhiteSpace(fileName))
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = "Invalid file name.";
+                        return outObj;
+                    }
+
+                    byte[] imageBytes;
+                    string extension;
+
+                    const int maxFileSize = 2 * 1024 * 1024; // 2 MB
+
+                    if (hasUploadedFile)
+                    {
+                        var file = files!.First();
+
+                        if (file.Length == 0)
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "The uploaded file is empty.";
+                            return outObj;
+                        }
+
+                         extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+
+
+                        if (extension != ".png" &&
+                            extension != ".jpg" &&
+                            extension != ".jpeg")
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message =
+                                "Only PNG, JPG, and JPEG files are allowed.";
+                            return outObj;
+                        }
+
+
+
+                        if (!new[] { ".png", ".jpg", ".jpeg" }.Contains(
+                          extension,
+                          StringComparer.OrdinalIgnoreCase))
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "Only PNG, JPG, and JPEG files are allowed.";
+                            return outObj;
+                        }
+
+                        fileName = $"{fileName}{extension}";
+
+                        if (file.Length > maxFileSize)
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "Maximum file size is 2 MB.";
+                            return outObj;
+                        }
+
+                        using var memoryStream = new MemoryStream();
+                         file.CopyTo(memoryStream);
+                         //file.CopyToAsync(memoryStream);
+                        imageBytes = memoryStream.ToArray();
+                    }
+                    else
+                    {
+                        // Webcam image is expected to be PNG.
+                        extension = ".png";
+                        try
+                        {
+                               imageBytes = DecodePngDataUrl(
+                                CONTACT_WEBCAM_FILE!);
+                        }
+                        catch (FormatException)
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "Invalid webcam image data.";
+                            return outObj;
+                        }
+
+                        if (imageBytes.Length == 0 ||
+                          imageBytes.Length > maxFileSize)
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message =
+                                "Webcam image must be between 1 byte and 2 MB.";
+                            return outObj;
+                        }
+                    }
+
+                    // Append the extension before constructing the physical path.
+                    // Avoid duplicating it when the stored filename already has it.
+                    if (!fileName.EndsWith(
+                            extension,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        fileName += extension;
+                    }
+
+                    // Resolve the storage folder safely.
+                    string targetFolder = GetSafeStoragePath(
+                        storageRoot,
+                        storedPath);
+
+                    Directory.CreateDirectory(targetFolder);
+
+                    // Physical path now includes the file extension.
+                    string fullPath = GetSafeStoragePath(
+                        targetFolder,
+                        fileName);
+
+                    // Relative path saved in the database.
+                    string relativePath = Path.Combine(
+                        storedPath,
+                        fileName
+                    ).Replace("\\", "/");
+
+                    // Create a temporary file in the same folder.
+                    string tempPath = Path.Combine(
+                        targetFolder,
+                        Guid.NewGuid().ToString("N") + ".tmp");
+
+                    string? backupPath = null;
+                    bool newFileInstalled = false;
+
+                    try
+                    {
+                        // Write to a temporary file first.
+                        System.IO.File.WriteAllBytes(tempPath, imageBytes);
+
+                        // Keep the old image available for rollback.
+                        if (System.IO.File.Exists(fullPath))
+                        {
+                            backupPath = Path.Combine(
+                                targetFolder,
+                                Guid.NewGuid().ToString("N") + ".bak");
+
+                            System.IO.File.Move(fullPath, backupPath);
+                        }
+
+                        System.IO.File.Move(tempPath, fullPath);
+                        newFileInstalled = true;
+
+                        // NOTE: This uses your existing string-only API.
+                        // Prefer parameterized SQL through your data-access layer.
+                        string updateContactSql =
+                            "UPDATE CONTACT_BOOK SET " +
+                            $"FILE_NAME={SqlLiteral(fileName)}, " +
+                            $"FILE_PATH={SqlLiteral(relativePath)}, " +
+                            $"CUSER={SqlLiteral(pJWT_USERID.ToString())}, " +
+                            "CDATETIME=GETDATE() " +
+                            $"WHERE MP_SEAT_ID={SqlLiteral(pJWT_MP_SEAT_ID.ToString())} " +
+                            $"AND CONT_VTR_NO={SqlLiteral(outObj.RetID.ToString())}";
+                        _core.ExecNonQuery(updateContactSql);
+
+                        if (tableType == "VOTERLIST" &&
+                            !string.IsNullOrWhiteSpace(voterNo))
+                        {
+                            string updateVoterSql =
+                                "UPDATE VOTERLIST SET " +
+                                $"VTR_FILE_NAME={SqlLiteral(fileName)}, " +
+                                $"VTR_FILE_PATH={SqlLiteral(relativePath)} " +
+                                $"WHERE MP_SEAT_ID={SqlLiteral(pJWT_MP_SEAT_ID.ToString())} " +
+                                $"AND VOTERNO={SqlLiteral(voterNo)}";
+
+                            _core.ExecNonQuery(updateVoterSql);
+                        }
+
+                        // Delete the backup only after the database updates succeed.
+                        if (backupPath != null &&
+                            System.IO.File.Exists(backupPath))
+                        {
+                            System.IO.File.Delete(backupPath);
+                        }
+                    }
+                    catch
+                    {
+                        // Remove the new file and restore the old one on failure.
+                        if (newFileInstalled &&
+                            System.IO.File.Exists(fullPath))
+                        {
+                            System.IO.File.Delete(fullPath);
+                        }
+
+                        if (backupPath != null &&
+                            System.IO.File.Exists(backupPath))
+                        {
+                            System.IO.File.Move(backupPath, fullPath);
+                        }
+
+                        throw;
+                    }
+                    finally
+                    {
+                        if (System.IO.File.Exists(tempPath))
+                            System.IO.File.Delete(tempPath);
+                    }
+
+                }
+                // ----------------------------------------------------
+                // DELETE / DELETE_IMAGE: remove physical image
+                // ----------------------------------------------------
+                if (flag is "DELETE" or "DELETE_IMAGE")
+                {
+                    if (string.IsNullOrWhiteSpace(storedPath))
+                        return outObj;
+
+                    // For delete operations, FILE_PATH may be the full
+                    // relative file path or the relative folder path.
+                    string deletePath;
+
+                    if (Path.HasExtension(storedPath))
+                    {
+                        deletePath = GetSafeStoragePath(
+                            storageRoot, storedPath);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(storedFileName))
+                    {
+                        deletePath = GetSafeStoragePath(
+                            GetSafeStoragePath(storageRoot, storedPath),
+                            Path.GetFileName(storedFileName));
+                    }
+                    else
+                    {
+                        return outObj;
+                    }
+
+                    if (System.IO.File.Exists(deletePath))
+                    {
+                        System.IO.File.Delete(deletePath);
+                    }
+                }
                 return outObj;
 
             }, nameof(CrudContactBook), out _, skipTokenCheck: false));
@@ -6472,7 +6785,7 @@ namespace Jabalpur_Office.Controllers
             }, nameof(GetandAppendContactdetailstoVisitor), out _, skipTokenCheck: false));
         }
 
-        [HttpPost("CrudVoterContactDetails")]
+        /*[HttpPost("CrudVoterContactDetails")]
         [CheckMenuAccess("AUTO")]
         public IActionResult CrudVoterContactDetails([FromBody] object input)
         {
@@ -6497,6 +6810,345 @@ namespace Jabalpur_Office.Controllers
 
             }, nameof(CrudVoterContactDetails), out _, skipTokenCheck: false));
 
+        }*/
+
+        [HttpPost("CrudVoterContactDetails")]
+        [CheckMenuAccess("AUTO")]
+        public IActionResult CrudVoterContactDetails([FromForm] string input, [FromForm] List<IFormFile> files, [FromForm] string? CONTACT_WEBCAM_FILE = null)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperCrudObjectData>(
+                   string.IsNullOrEmpty(input) ? new { } : ApiHelper.ToObject(input) // deserialize JSON string
+
+               );
+
+                var data = ApiHelper.ToObjectDictionary(rawData);
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                string flag = data.TryGetValue("FLAG", out var flagObj)
+                    ? Convert.ToString(flagObj) ?? string.Empty
+                    : string.Empty;
+
+                string tableFlag = data.TryGetValue("TABLE_FLAG", out var tableObj)
+                   ? Convert.ToString(tableObj) ?? string.Empty
+                   : string.Empty;
+
+                string vtrNo = data.TryGetValue("VOTERNO", out var voterObj)
+                    ? Convert.ToString(voterObj) ?? string.Empty
+                    : string.Empty;
+
+                flag = flag.Trim().ToUpperInvariant();
+                tableFlag = tableFlag.Trim().ToUpperInvariant();
+
+                // Step 2: Build SQL parameters (advanced dynamic approach)
+                var (paramList, pStatus, pMsg, pRetId) = SqlParamBuilderWithAdvancedCrud.BuildAdvanced(
+                    data: data,
+                    keys: filterKeys,
+                    mpSeatId: pJWT_MP_SEAT_ID,
+                    userId: pJWT_USERID,
+                    includeRetId: false
+                );
+
+                var fileNameParam = new SqlParameter(
+                   "@pFILE_NAME", SqlDbType.NVarChar, -1)
+                {
+                    Direction = ParameterDirection.Output
+                };
+
+                var filePathParam = new SqlParameter(
+                    "@pFILE_PATH", SqlDbType.NVarChar, -1)
+                {
+                    Direction = ParameterDirection.Output
+                };
+
+                paramList.Add(fileNameParam);
+                paramList.Add(filePathParam);
+
+                DataTable dt = _core.ExecProcDt("ReactCrudVoterContactDetails", paramList.ToArray());
+                SetOutput(pStatus, pMsg, outObj);
+
+                outObj.LoginStatus = pJWT_LOGIN_NAME;
+
+                if (outObj.StatusCode != 200)
+                    return outObj;
+
+                string storageRoot = Path.GetFullPath(_settings.BasePath);
+
+                string storedFileName = fileNameParam.Value == DBNull.Value
+                    ? string.Empty
+                    : Convert.ToString(fileNameParam.Value) ?? string.Empty;
+
+                string storedPath = filePathParam.Value == DBNull.Value
+                    ? string.Empty
+                    : Convert.ToString(filePathParam.Value) ?? string.Empty;
+
+                if (flag is "UPDATE" or "UPDATE_IMAGE")
+                {
+                    
+                    bool hasUploadedFile = files?.Any() == true;
+                    bool hasWebcamImage =
+                        !string.IsNullOrWhiteSpace(CONTACT_WEBCAM_FILE);
+
+                    if (!hasUploadedFile && !hasWebcamImage)
+                        return outObj;
+
+                    if (hasUploadedFile && hasWebcamImage)
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message =
+                            "Upload either a  file or a webcam image, not both.";
+                        return outObj;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(storedFileName) ||
+                        string.IsNullOrWhiteSpace(storedPath))
+                    {
+                        outObj.StatusCode = 500;
+                        outObj.Message =
+                            "The stored procedure did not return the required file name or path.";
+                        return outObj;
+                    }
+
+                    // Get the filename returned by the stored procedure.
+                    string fileName = Path.GetFileName(storedFileName);
+
+                    if (string.IsNullOrWhiteSpace(fileName))
+                    {
+                        outObj.StatusCode = 400;
+                        outObj.Message = "Invalid file name.";
+                        return outObj;
+                    }
+
+
+                    byte[] imageBytes;
+                    string extension;
+
+                    const int maxFileSize = 2 * 1024 * 1024; // 2 MB
+
+                    if (hasUploadedFile)
+                    {
+                        var file = files!.First();
+
+                        if (file.Length == 0)
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "The uploaded file is empty.";
+                            return outObj;
+                        }
+
+                         extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+
+                        if (extension != ".png" &&
+                            extension != ".jpg" &&
+                            extension != ".jpeg")
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message =
+                                "Only PNG, JPG, and JPEG files are allowed.";
+                            return outObj;
+                        }
+
+                        if (file.Length > maxFileSize)
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "Maximum file size is 2 MB.";
+                            return outObj;
+                        }
+
+                        using var memoryStream = new MemoryStream();
+                        file.CopyTo(memoryStream);
+                        imageBytes = memoryStream.ToArray();
+                    }
+                    else
+                    {
+                        // Webcam image is expected to be PNG.
+                        extension = ".png";
+                        try
+                        {
+
+                            imageBytes = DecodePngDataUrl(
+                              CONTACT_WEBCAM_FILE!);
+                        }
+                        catch (FormatException)
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message = "Invalid webcam image data.";
+                            return outObj;
+                        }
+
+
+                        if (imageBytes.Length == 0 ||
+                            imageBytes.Length > maxFileSize)
+                        {
+                            outObj.StatusCode = 400;
+                            outObj.Message =
+                                "Webcam image must be between 1 byte and 2 MB.";
+                            return outObj;
+                        }
+                    }
+                    // Append the extension before constructing the physical path.
+                    // Avoid duplicating it when the stored filename already has it.
+                    if (!fileName.EndsWith(
+                            extension,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        fileName += extension;
+                    }
+
+                    // Resolve the storage folder safely.
+                    string targetFolder = GetSafeStoragePath(
+                        storageRoot,
+                        storedPath);
+
+                    Directory.CreateDirectory(targetFolder);
+
+                    // Physical path now includes the file extension.
+                    string fullPath = GetSafeStoragePath(
+                        targetFolder,
+                        fileName);
+
+                    // Relative path saved in the database.
+                    string relativePath = Path.Combine(
+                        storedPath,
+                        fileName
+                    ).Replace("\\", "/");
+
+                    // Create a temporary file in the same folder.
+                    string tempPath = Path.Combine(
+                        targetFolder,
+                        Guid.NewGuid().ToString("N") + ".tmp");
+
+                    string? backupPath = null;
+                    bool newFileInstalled = false;
+
+                    try
+                    {
+                        // Write to a temporary file first.
+                        System.IO.File.WriteAllBytes(tempPath, imageBytes);
+
+                        // Keep the old image available for rollback.
+                        if (System.IO.File.Exists(fullPath))
+                        {
+                            backupPath = Path.Combine(
+                                targetFolder,
+                                Guid.NewGuid().ToString("N") + ".bak");
+
+                            System.IO.File.Move(fullPath, backupPath);
+                        }
+
+                        System.IO.File.Move(tempPath, fullPath);
+
+                        newFileInstalled = true;
+
+                        // NOTE: This uses your existing string-only API.
+                        // Prefer parameterized SQL through your data-access layer.
+
+                        if (tableFlag == "CONTACT_BOOK")
+                        {
+                            string updateContactSql =
+                              "UPDATE CONTACT_BOOK SET " +
+                              $"FILE_NAME={SqlLiteral(fileName)}, " +
+                              $"FILE_PATH={SqlLiteral(relativePath)}, " +
+                              $"CUSER={SqlLiteral(pJWT_USERID.ToString())}, " +
+                              "CDATETIME=GETDATE() " +
+                              $"WHERE MP_SEAT_ID={SqlLiteral(pJWT_MP_SEAT_ID.ToString())} " +
+                              $"AND CONT_VTR_NO={SqlLiteral(vtrNo.ToString())}";
+                            _core.ExecNonQuery(updateContactSql);
+                        }
+                        if (tableFlag == "VOTERLIST")
+                        {
+                            string updateVoterSql =
+                            "UPDATE VOTERLIST SET " +
+                              $"VTR_FILE_NAME={SqlLiteral(fileName)}, " +
+                              $"VTR_FILE_PATH={SqlLiteral(relativePath)} " +
+                              $"WHERE MP_SEAT_ID={SqlLiteral(pJWT_MP_SEAT_ID.ToString())} " +
+                              $"AND VOTERNO={SqlLiteral(vtrNo)}";
+                            _core.ExecNonQuery(updateVoterSql);
+
+
+                            string updateVtrContactSql =
+                              "UPDATE CONTACT_BOOK SET " +
+                              $"FILE_NAME={SqlLiteral(fileName)}, " +
+                              $"FILE_PATH={SqlLiteral(relativePath)}, " +
+                              $"CUSER={SqlLiteral(pJWT_USERID.ToString())}, " +
+                              "CDATETIME=GETDATE() " +
+                              $"WHERE MP_SEAT_ID={SqlLiteral(pJWT_MP_SEAT_ID.ToString())} " +
+                              $"AND VOTER_NO={SqlLiteral(vtrNo.ToString())}";
+                            _core.ExecNonQuery(updateVtrContactSql);
+
+
+                        }
+
+                        // Delete the backup only after the database updates succeed.
+                        if (backupPath != null &&
+                            System.IO.File.Exists(backupPath))
+                        {
+                            System.IO.File.Delete(backupPath);
+                        }
+
+                    }
+                    catch
+                    {
+                        // Remove the new file and restore the old one on failure.
+                        if (newFileInstalled &&
+                            System.IO.File.Exists(fullPath))
+                        {
+                            System.IO.File.Delete(fullPath);
+                        }
+
+                        if (backupPath != null &&
+                            System.IO.File.Exists(backupPath))
+                        {
+                            System.IO.File.Move(backupPath, fullPath);
+                        }
+
+                        throw;
+                    }
+                    finally
+                    {
+                        if (System.IO.File.Exists(tempPath))
+                            System.IO.File.Delete(tempPath);
+                    }
+
+                }
+                // ----------------------------------------------------
+                // DELETE / DELETE_IMAGE: remove physical image
+                // ----------------------------------------------------
+                if (flag is "DELETE" or "DELETE_IMAGE")
+                {
+                    if (string.IsNullOrWhiteSpace(storedPath))
+                        return outObj;
+
+                    // For delete operations, FILE_PATH may be the full
+                    // relative file path or the relative folder path.
+                    string deletePath;
+
+                    if (Path.HasExtension(storedPath))
+                    {
+                        deletePath = GetSafeStoragePath(
+                            storageRoot, storedPath);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(storedFileName))
+                    {
+                        deletePath = GetSafeStoragePath(
+                            GetSafeStoragePath(storageRoot, storedPath),
+                            Path.GetFileName(storedFileName));
+                    }
+                    else
+                    {
+                        return outObj;
+                    }
+
+                    if (System.IO.File.Exists(deletePath))
+                    {
+                        System.IO.File.Delete(deletePath);
+                    }
+                }
+                
+                return outObj;
+
+            }, nameof(CrudVoterContactDetails), out _, skipTokenCheck: false));
         }
 
         [HttpPost("CrudVisitorMasterDetails")]
@@ -8474,6 +9126,238 @@ namespace Jabalpur_Office.Controllers
                 : null;
         }
 
+        private static string GetSafeStoragePath(
+            string root,
+            string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath) ||
+                Path.IsPathRooted(relativePath))
+            {
+                throw new InvalidOperationException(
+                    "Invalid storage path.");
+            }
+
+            string fullRoot = Path.GetFullPath(root);
+            string fullPath = Path.GetFullPath(
+                Path.Combine(fullRoot, relativePath));
+
+            string rootPrefix = fullRoot.TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+
+            if (!fullPath.StartsWith(
+                rootPrefix,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "The requested path is outside the storage directory.");
+            }
+
+            return fullPath;
+        }
+
+        private static byte[] DecodePngDataUrl(string dataUrl)
+        {
+            //const string prefix = "data:image/png;base64,";
+
+            //if (!dataUrl.StartsWith(
+            //    prefix, StringComparison.OrdinalIgnoreCase))
+            //{
+            //    throw new FormatException(
+            //        "Only PNG data URLs are supported.");
+            //}
+            //string base64 = dataUrl.Substring(prefix.Length);
+
+            // return Convert.FromBase64String(base64);
+
+            if (string.IsNullOrWhiteSpace(dataUrl))
+                throw new FormatException("Image data is empty.");
+
+            int commaIndex = dataUrl.IndexOf(',');
+
+            if (commaIndex < 0)
+                throw new FormatException("Invalid image data URL.");
+
+            string header = dataUrl.Substring(0, commaIndex);
+
+            bool isSupported =
+                 header.Equals("data:image/png;base64",
+                     StringComparison.OrdinalIgnoreCase) ||
+                 header.Equals("data:image/jpg;base64",
+                     StringComparison.OrdinalIgnoreCase) ||
+                 header.Equals("data:image/jpeg;base64",
+                     StringComparison.OrdinalIgnoreCase);
+
+            if (!isSupported)
+                throw new FormatException(
+                    "Only PNG, JPG, and JPEG images are supported.");
+
+            byte[] imageBytes = Convert.FromBase64String(
+              dataUrl.Substring(commaIndex + 1));
+
+            using var bitmap = SKBitmap.Decode(imageBytes);
+
+            if (bitmap == null)
+                throw new FormatException("Invalid image content.");
+
+            using var image = SKImage.FromBitmap(bitmap);
+            using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+
+            return encoded.ToArray();
+
+            //using var image =
+            //    SixLabors.ImageSharp.Image.Load(imageBytes);
+
+            //using var output = new MemoryStream();
+
+            //image.Save(
+            //    output,
+            //    new SixLabors.ImageSharp.Formats.Png.PngEncoder());
+
+            //return output.ToArray();
+
+
+        }
+
+        private static bool IsPng(byte[] bytes)
+        {
+            byte[] signature =
+            {
+              0x89, 0x50, 0x4E, 0x47,
+              0x0D, 0x0A, 0x1A, 0x0A
+            };
+
+            return bytes.Length >= signature.Length &&
+                   bytes.Take(signature.Length)
+                        .SequenceEqual(signature);
+        }
+
+        private static string SqlLiteral(string value)
+        {
+            return "N'" + value.Replace("'", "''") + "'";
+        }
+
+
+        [AllowAnonymous]
+        [HttpPost("MoveRenameImages")] // Cleaner route syntax
+        public IActionResult MoveRenameImages([FromBody] object input)
+        {
+            return Ok(ExecuteWithHandling(() =>
+            {
+                // 1. Prepare wrapper & raw data
+                var (outObj, rawData) = PrepareWrapperAndData<WrapperListData>(input ?? new { });
+
+                // 2. Convert to object dictionary
+                var data = ApiHelper.ToObjectDictionary(rawData);
+                var filterKeys = ApiHelper.GetFilteredKeys(data);
+
+                // 3. Build SQL parameters
+                var (paramList, pStatus, pMsg, _, _) =
+                    SqlParamBuilderWithAdvanced.BuildAdvanced(
+                        data: data,
+                        keys: filterKeys,
+                        includeTotalCount: false,
+                        includeWhere: false
+                    );
+                // 4. Execute stored procedure
+                DataTable dt = _core.ExecProcDt("ReactMoveRenameImages", paramList.ToArray());
+
+                // 5. Convert to output wrapper
+                ApiHelper.SetDataTableListOutput(dt, outObj);
+
+                // 6. Set output message + status
+                SetOutput(pStatus, pMsg, outObj);
+
+                if (outObj.StatusCode !=200)
+                {
+                    return outObj;
+                }
+                var results = new List<object>();
+                foreach (DataRow row in dt.Rows)
+                {
+                    string oldName = Convert.ToString(
+                     row["OLD_IMAGE_NAME"]) ?? "";
+
+                    string oldPath = Convert.ToString(
+                        row["OLD_IMAGE_PATH"]) ?? "";
+
+                    string finalOldPath = Path.GetFullPath(
+                        Path.Combine(_settings.BasePath, oldPath));
+
+                    string newName = Convert.ToString(
+                        row["NEW_IMAGE_NAME"]) ?? "";
+
+                    string newPath = Convert.ToString(
+                        row["NEW_IMAGE_PATH"]) ?? "";
+
+                    
+                    
+                    string finalNewPath = Path.GetFullPath(
+                        Path.Combine(_settings.BasePath, newPath));
+
+                    try
+                    {
+                        string sourceFile = Path.GetFullPath(finalOldPath);
+                         
+
+                        string destinationFile = Path.GetFullPath(
+                            Path.Combine(finalNewPath, newName));
+
+                        if (!System.IO.File.Exists(sourceFile))
+                        {
+                            results.Add(new
+                            {
+                                OLD_IMAGE_NAME = oldName,
+                                STATUS = "FAILED",
+                                MESSAGE = "Source image not found."
+                            });
+
+                            continue;
+                        }
+                        Directory.CreateDirectory(newPath);
+
+                        if (System.IO.File.Exists(destinationFile))
+                        {
+                            results.Add(new
+                            {
+                                OLD_IMAGE_NAME = oldName,
+                                STATUS = "FAILED",
+                                MESSAGE = "Destination image already exists."
+                            });
+
+                            continue;
+                        }
+
+                        // Move and rename the image.
+                        System.IO.File.Move(sourceFile, destinationFile);
+
+                        results.Add(new
+                        {
+                            OLD_IMAGE_NAME = oldName,
+                            NEW_IMAGE_NAME = newName,
+                            OLD_IMAGE_PATH = oldPath,
+                            NEW_IMAGE_PATH = newPath,
+                            STATUS = "SUCCESS",
+                            MESSAGE = "Image moved and renamed successfully."
+                        });
+
+                    }
+                    catch (Exception ex) {
+                        results.Add(new
+                        {
+                            OLD_IMAGE_NAME = oldName,
+                            STATUS = "FAILED",
+                            MESSAGE = "Unable to move or rename image."
+                        });
+
+                    }
+                }
+
+                return outObj;
+
+            }, nameof(MoveRenameImages), out _, skipTokenCheck: true));
+        }
 
 
     }
